@@ -46,10 +46,47 @@ class Repository:
 
     # ---------------------- players ----------------------
 
+    # Prefix usat per als fcb_id de jugadors creats com a placeholder (només
+    # coneixem el seu nom, no l'id intern del portal). Quan més tard arriba un
+    # `upsert_player` amb fcb_id real i el mateix nom, fusionem automàticament.
+    PLACEHOLDER_PREFIX = "name:"
+
+    @classmethod
+    def make_placeholder_fcb_id(cls, nom: str) -> str:
+        return f"{cls.PLACEHOLDER_PREFIX}{nom}"
+
     def upsert_player(self, player: Player) -> int:
         club_id: int | None = None
         if player.club_fcb_id:
             club_id = self.get_club_id_by_fcb_id(player.club_fcb_id)
+
+        # Fusió de placeholder: si arriba un fcb_id real i ja existeix un
+        # placeholder amb el mateix nom (i no hi ha ja un player amb el nou
+        # fcb_id), promocionem el placeholder reassignant-li el fcb_id real.
+        # Així els games existents (player1_id, player2_id, ...) segueixen
+        # apuntant al mateix id intern sense haver de moure files.
+        if not player.fcb_id.startswith(self.PLACEHOLDER_PREFIX):
+            existing_real = self.conn.execute(
+                "SELECT id FROM players WHERE fcb_id = ?", (player.fcb_id,)
+            ).fetchone()
+            if existing_real is None:
+                placeholder_row = self.conn.execute(
+                    "SELECT id FROM players WHERE fcb_id LIKE ? AND nom = ?",
+                    (f"{self.PLACEHOLDER_PREFIX}%", player.nom),
+                ).fetchone()
+                if placeholder_row is not None:
+                    self.conn.execute(
+                        """
+                        UPDATE players
+                        SET fcb_id = ?,
+                            club_id = COALESCE(?, club_id),
+                            updated_at = datetime('now')
+                        WHERE id = ?
+                        """,
+                        (player.fcb_id, club_id, placeholder_row[0]),
+                    )
+                    return placeholder_row[0]
+
         cur = self.conn.execute(
             """
             INSERT INTO players (fcb_id, nom, club_id, seguiment)
@@ -61,6 +98,30 @@ class Repository:
             RETURNING id
             """,
             (player.fcb_id, player.nom, club_id, int(player.seguiment)),
+        )
+        return cur.fetchone()[0]
+
+    def resolve_or_create_player_by_nom(self, nom: str) -> str:
+        """Retorna l'fcb_id del jugador amb aquest nom; en crea un placeholder si no existeix.
+
+        Si hi ha homònims, retorna l'fcb_id del primer trobat (per evitar
+        rebentar). Documentat: en cas d'ambigüitat, no podem distingir,
+        però almenys no perdem la partida.
+        """
+        existing = self.get_player_fcb_id_by_nom(nom)
+        if existing is not None:
+            return existing
+        # Crear placeholder. No usem upsert_player perquè el placeholder
+        # NO ha de disparar la lògica de fusió (no té sentit fusionar amb
+        # ell mateix).
+        placeholder = Player(fcb_id=self.make_placeholder_fcb_id(nom), nom=nom)
+        cur = self.conn.execute(
+            """
+            INSERT INTO players (fcb_id, nom, seguiment) VALUES (?, ?, 0)
+            ON CONFLICT(fcb_id) DO UPDATE SET nom = excluded.nom
+            RETURNING fcb_id
+            """,
+            (placeholder.fcb_id, placeholder.nom),
         )
         return cur.fetchone()[0]
 

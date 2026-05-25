@@ -455,6 +455,81 @@ def test_ingest_lliga_encontre_enriches_existing_game(settings: StubSettings) ->
     assert row[5] is not None  # temporada derivada de 2025-09-27 = "2025-2026"
 
 
+# ---------------- create_missing_players ----------------
+
+
+def test_ingest_lliga_encontre_create_missing_persists_all(
+    settings: StubSettings,
+) -> None:
+    """Amb create_missing_players=True, totes les partides es desen amb placeholders."""
+    fixtures = {
+        "https://www.fcbillar.cat/ca/lligues/partides/36/148/316/2593/10939": (
+            "lliga_3b_encontre_partides.html"
+        ),
+    }
+    client = StubScraperClient(settings, fixtures)
+    encontre = LligaEncontre(
+        lliga_id=36, divisio_id=148, grup_id=316, jornada_id=2593, encontre_id=10939,
+        equip_local='C.B. SANTS "A"', p_parcials_local=5, p_match_local=3,
+        equip_visitant='SB FOMENT MOLINS "A"', p_parcials_visitant=3, p_match_visitant=0,
+    )
+    result = ingest_lliga_encontre(
+        client, encontre, modalitat_codi_fcb=1, data=date(2025, 9, 27),
+        create_missing_players=True, settings=settings,
+    )
+    assert result.games_upserted == 4
+    assert result.games_skipped_missing_player == 0
+
+    counts = Repository(ensure_schema(settings.db_path)).counts()
+    assert counts["players"] == 8  # tots placeholders
+    assert counts["games"] == 4
+
+
+def test_placeholder_fusion_after_ranking_ingest(settings: StubSettings) -> None:
+    """Si primer ingerim lliga amb placeholders i després el rànquing amb fcb_id real,
+    els placeholders es fusionen automàticament i els games NO es perden."""
+    # Pas 1: ingest lliga amb placeholders
+    lliga_fixtures = {
+        "https://www.fcbillar.cat/ca/lligues/partides/36/148/316/2593/10939": (
+            "lliga_3b_encontre_partides.html"
+        ),
+    }
+    client = StubScraperClient(settings, lliga_fixtures)
+    encontre = LligaEncontre(
+        lliga_id=36, divisio_id=148, grup_id=316, jornada_id=2593, encontre_id=10939,
+        equip_local='C.B. SANTS "A"', p_parcials_local=5, p_match_local=3,
+        equip_visitant='SB FOMENT MOLINS "A"', p_parcials_visitant=3, p_match_visitant=0,
+    )
+    ingest_lliga_encontre(
+        client, encontre, modalitat_codi_fcb=1, data=date(2025, 9, 27),
+        create_missing_players=True, settings=settings,
+    )
+
+    conn = ensure_schema(settings.db_path)
+    repo = Repository(conn)
+    counts_before = repo.counts()
+    assert counts_before["players"] == 8
+    assert counts_before["games"] == 4
+
+    # Pas 2: upsert d'un Player real amb mateix nom → fusió
+    from fcbillar.models import Player
+
+    # VARELA LOSADA, FRANCESC apareixia com a placeholder; ara arriba amb fcb_id real "60".
+    placeholder_player_id = repo.get_player_id_by_fcb_id("name:VARELA LOSADA, FRANCESC")
+    assert placeholder_player_id is not None
+    real_player_id = repo.upsert_player(Player(fcb_id="60", nom="VARELA LOSADA, FRANCESC"))
+
+    # Mateix id intern → la fila game segueix apuntant al mateix players.id
+    assert real_player_id == placeholder_player_id
+    # El placeholder ha desaparegut, el real existeix
+    assert repo.get_player_id_by_fcb_id("name:VARELA LOSADA, FRANCESC") is None
+    assert repo.get_player_id_by_fcb_id("60") == real_player_id
+    # Cap player nou: 8 → 8 (el placeholder s'ha promogut a real, no s'ha creat un altre)
+    assert repo.counts()["players"] == 8
+    # I el game segueix sent allà.
+    assert repo.counts()["games"] == 4
+
+
 # ---------------- ingest_lliga_jornada ----------------
 
 

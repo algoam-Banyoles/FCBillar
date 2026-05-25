@@ -129,11 +129,19 @@ def ingest_partides_cmd(
     num_seq: int = typer.Argument(..., help="Número seqüencial del rànquing"),
     modalitat: int = typer.Argument(..., help="Codi de modalitat"),
     player_fcb_id: str = typer.Argument(..., help="fcb_id intern del jugador (vist a la URL Partides)"),
+    create_missing_players: bool = typer.Option(
+        False,
+        "--create-missing-players",
+        help="Crea placeholders pels contraris no registrats (fusió automàtica posterior)",
+    ),
 ) -> None:
     """Descarrega les partides d'un jugador dins d'un rànquing i les desa a la BD."""
     settings = get_settings()
     with ScraperClient(settings) as client:
-        result = ingest_partides(client, num_seq, modalitat, player_fcb_id, settings=settings)
+        result = ingest_partides(
+            client, num_seq, modalitat, player_fcb_id, settings=settings,
+            create_missing_players=create_missing_players,
+        )
     console.print(
         f"[green]OK partides {num_seq}/{modalitat}/{player_fcb_id}: "
         f"{result.games_upserted} desades, "
@@ -237,6 +245,11 @@ def ingest_lliga_jornada_cmd(
         "--data",
         help="Data de la jornada (YYYY-MM-DD); s'usa per derivar la temporada",
     ),
+    create_missing_players: bool = typer.Option(
+        False,
+        "--create-missing-players",
+        help="Crea placeholders pels jugadors no registrats (fusió automàtica posterior)",
+    ),
 ) -> None:
     """Ingest tots els encontres+partides d'una jornada de lliga."""
     from datetime import date as _date
@@ -253,6 +266,7 @@ def ingest_lliga_jornada_cmd(
             modalitat_codi_fcb=modalitat,
             data=data_val,
             settings=settings,
+            create_missing_players=create_missing_players,
         )
     console.print(
         f"[green]OK jornada {lliga_id}/{divisio_id}/{grup_id}/{jornada_id}: "

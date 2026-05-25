@@ -268,6 +268,60 @@ def test_counts_returns_all_tables(repo: Repository) -> None:
     }
 
 
+def test_resolve_or_create_player_creates_placeholder(repo: Repository) -> None:
+    fcb_id = repo.resolve_or_create_player_by_nom("ALGÚ DESCONEGUT, JOAN")
+    assert fcb_id == "name:ALGÚ DESCONEGUT, JOAN"
+    assert repo.counts()["players"] == 1
+    # Idempotent: segon cop retorna el mateix sense crear-ne un altre.
+    fcb_id2 = repo.resolve_or_create_player_by_nom("ALGÚ DESCONEGUT, JOAN")
+    assert fcb_id2 == fcb_id
+    assert repo.counts()["players"] == 1
+
+
+def test_resolve_or_create_returns_existing_real_player(repo: Repository) -> None:
+    """Si ja existeix un player amb el nom (real, no placeholder), el retorna."""
+    repo.upsert_player(Player(fcb_id="566", nom="VILALTA PARÉ, VALENTÍ"))
+    fcb_id = repo.resolve_or_create_player_by_nom("VILALTA PARÉ, VALENTÍ")
+    assert fcb_id == "566"
+    assert repo.counts()["players"] == 1  # cap nou
+
+
+def test_upsert_player_real_fusions_placeholder(repo: Repository) -> None:
+    """Crear placeholder primer, després upsert amb fcb_id real → fusió."""
+    # 1. Crear placeholder
+    repo.resolve_or_create_player_by_nom("VILALTA PARÉ, VALENTÍ")
+    assert repo.counts()["players"] == 1
+    placeholder_id = repo.get_player_id_by_fcb_id("name:VILALTA PARÉ, VALENTÍ")
+    assert placeholder_id is not None
+
+    # 2. Arribem amb el fcb_id real
+    real_id = repo.upsert_player(Player(fcb_id="566", nom="VILALTA PARÉ, VALENTÍ"))
+
+    # 3. El placeholder ha desaparegut i el real té el mateix id intern
+    assert real_id == placeholder_id  # mateix id intern → games preservats
+    assert repo.counts()["players"] == 1  # cap nou
+    assert repo.get_player_id_by_fcb_id("name:VILALTA PARÉ, VALENTÍ") is None
+    assert repo.get_player_id_by_fcb_id("566") == placeholder_id
+
+
+def test_upsert_player_doesnt_touch_unrelated_placeholders(repo: Repository) -> None:
+    """upsert d'un real amb un nom diferent NO ha de tocar placeholders existents."""
+    repo.resolve_or_create_player_by_nom("ALTRE JUGADOR, A")
+    repo.upsert_player(Player(fcb_id="566", nom="VILALTA PARÉ, VALENTÍ"))
+    # 2 players: el placeholder + el real, cap fusió perquè els noms són diferents.
+    assert repo.counts()["players"] == 2
+    assert repo.get_player_id_by_fcb_id("name:ALTRE JUGADOR, A") is not None
+    assert repo.get_player_id_by_fcb_id("566") is not None
+
+
+def test_upsert_player_with_placeholder_fcb_id_doesnt_self_fusion(repo: Repository) -> None:
+    """upsert d'un Player amb fcb_id que comença per 'name:' NO ha de fusionar."""
+    repo.resolve_or_create_player_by_nom("X, Y")
+    # Cridar upsert_player amb el placeholder directe no ha de duplicar res.
+    repo.upsert_player(Player(fcb_id="name:X, Y", nom="X, Y"))
+    assert repo.counts()["players"] == 1
+
+
 def test_upsert_modalitat_idempotent(repo: Repository) -> None:
     """Modalitat seedejada ja existeix; upsert l'ha de tornar amb el mateix id."""
     mid = repo.upsert_modalitat(Modalitat(codi_fcb=1, nom="Tres bandes"))

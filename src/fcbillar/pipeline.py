@@ -185,12 +185,17 @@ def ingest_partides(
     player_fcb_id: str,
     *,
     settings: Settings | None = None,
+    create_missing_players: bool = False,
 ) -> IngestPartidesResult:
     """Descarrega partideshome d'un jugador en un rànquing i les persisteix.
 
     El portal exposa noms però no fcb_ids dels contraris. Resolem nom → fcb_id
-    contra els players ja existents a la BD (vinguts d'un rànquing previ). Si
-    el contrari no existeix, saltem la partida i ho comptabilitzem.
+    contra els players ja existents a la BD (vinguts d'un rànquing previ).
+
+    Per defecte les partides amb un contrari no registrat es salten. Amb
+    `create_missing_players=True` es crea un placeholder (fcb_id="name:<NOM>")
+    i la partida es desa; si més tard l'fcb_id real apareix via ingest_ranking,
+    el repository fusiona automàticament el placeholder al jugador real.
 
     Requereix que el rànquing (num_seq, modalitat) ja estigui inserit a la BD
     perquè la traçabilitat ranking_game_links pugui referenciar-lo.
@@ -222,7 +227,10 @@ def ingest_partides(
     skipped = 0
     links = 0
     for row in parsed.rows:
-        game = _build_game_from_raw_row(row, modalitat_codi_fcb, owner_nom, repo)
+        game = _build_game_from_raw_row(
+            row, modalitat_codi_fcb, owner_nom, repo,
+            create_missing_players=create_missing_players,
+        )
         if game is None:
             skipped += 1
             continue
@@ -259,10 +267,16 @@ def _build_game_from_raw_row(
     modalitat_codi_fcb: int,
     owner_nom: str,
     repo: Repository,
+    *,
+    create_missing_players: bool = False,
 ) -> Game | None:
     """Resol noms a fcb_ids i construeix un Game. Retorna None si no es pot."""
-    local_fcb = repo.get_player_fcb_id_by_nom(row.local_nom)
-    visitant_fcb = repo.get_player_fcb_id_by_nom(row.visitant_nom)
+    if create_missing_players:
+        local_fcb = repo.resolve_or_create_player_by_nom(row.local_nom)
+        visitant_fcb = repo.resolve_or_create_player_by_nom(row.visitant_nom)
+    else:
+        local_fcb = repo.get_player_fcb_id_by_nom(row.local_nom)
+        visitant_fcb = repo.get_player_fcb_id_by_nom(row.visitant_nom)
     if local_fcb is None or visitant_fcb is None:
         log.debug(
             "Salto partida %s %s vs %s: local_fcb=%s visitant_fcb=%s",
@@ -596,6 +610,7 @@ def ingest_lliga_encontre(
     data: date | None = None,
     competicio_nom: str = "LLIGA",
     settings: Settings | None = None,
+    create_missing_players: bool = False,
 ) -> IngestLligaEncontreResult:
     """Ingest les partides individuals d'un encontre + tot el context.
 
@@ -665,6 +680,7 @@ def ingest_lliga_encontre(
             encontre_lliga_id=encontre_lliga_id,
             temporada_id=temporada_id,
             repo=repo,
+            create_missing_players=create_missing_players,
         )
         if game is None:
             skipped += 1
@@ -702,9 +718,14 @@ def _build_game_from_lliga_row(
     encontre_lliga_id: int,
     temporada_id: int | None,
     repo: Repository,
+    create_missing_players: bool = False,
 ) -> Game | None:
-    local_fcb = repo.get_player_fcb_id_by_nom(row.local_nom)
-    visitant_fcb = repo.get_player_fcb_id_by_nom(row.visitant_nom)
+    if create_missing_players:
+        local_fcb = repo.resolve_or_create_player_by_nom(row.local_nom)
+        visitant_fcb = repo.resolve_or_create_player_by_nom(row.visitant_nom)
+    else:
+        local_fcb = repo.get_player_fcb_id_by_nom(row.local_nom)
+        visitant_fcb = repo.get_player_fcb_id_by_nom(row.visitant_nom)
     if local_fcb is None or visitant_fcb is None:
         log.debug(
             "Salto partida lliga %s vs %s: local_fcb=%s visitant_fcb=%s",
@@ -777,6 +798,7 @@ def ingest_lliga_jornada(
     data: date | None = None,
     competicio_nom: str = "LLIGA",
     settings: Settings | None = None,
+    create_missing_players: bool = False,
 ) -> IngestLligaJornadaResult:
     """Ingest tots els encontres d'una jornada de lliga.
 
@@ -801,6 +823,7 @@ def ingest_lliga_jornada(
                 data=data,
                 competicio_nom=competicio_nom,
                 settings=settings,
+                create_missing_players=create_missing_players,
             )
         except Exception as e:
             log.warning(
