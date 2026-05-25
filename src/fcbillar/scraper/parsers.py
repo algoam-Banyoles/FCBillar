@@ -15,9 +15,10 @@ log = logging.getLogger(__name__)
 
 
 # Format de l'href del link "Partides" dins de cada fila del rànquing:
-#   ca/jugador/ranking/partideshome/{num_seq}/{modalitat}/{player_fcb_id}
+#   ca/jugador/ranking/partideshome/{num_seq}/{modalitat}/{player_fcb_id}  (rànquings actuals)
+#   ca/jugador/ranking/partides/{num_seq}/{modalitat}/{player_fcb_id}      (rànquings històrics)
 _PARTIDES_HREF_RE = re.compile(
-    r"ranking/partideshome/(\d+)/(\d+)/(\d+)"
+    r"ranking/partides(?:home)?/(\d+)/(\d+)/(\d+)"
 )
 
 # Format de l'href dels links de modalitat a l'historial:

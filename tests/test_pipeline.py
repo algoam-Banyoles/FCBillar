@@ -10,7 +10,9 @@ import pytest
 from fcbillar.db.migrations import ensure_schema
 from fcbillar.db.repository import Repository
 from fcbillar.pipeline import (
+    backfill_historical,
     backfill_modalitat,
+    backfill_ranking,
     ingest_partides,
     ingest_ranking,
     sync_current_rankings,
@@ -218,3 +220,54 @@ def test_backfill_only_followed_skips_non_followed(settings: StubSettings) -> No
     )
     assert result.players_processed == 1
     assert result.total_games_upserted == 10
+
+
+# ---------------- backfill_historical ----------------
+
+
+def test_backfill_ranking_with_no_partides(settings: StubSettings) -> None:
+    """backfill_ranking amb top_n=0 ingest només el rànquing, no les partides."""
+    client = StubScraperClient(settings, URL_FIXTURES)
+    res = backfill_ranking(client, 121, 2, top_n=0, settings=settings)
+    assert res.ranking_ingested is True
+    assert res.players_processed == 0
+    assert res.total_games_upserted == 0
+
+    counts = Repository(ensure_schema(settings.db_path)).counts()
+    assert counts["rankings"] == 1
+    assert counts["games"] == 0
+
+
+def test_backfill_historical_processes_what_stub_can_serve(
+    settings: StubSettings,
+) -> None:
+    """Donat l'historial real (15 dates × 5 modalitats) i fixtures per a un sol
+    (num_seq, modalitat), només aquest es processa OK; la resta queden a failed."""
+    fixtures = {
+        "https://www.fcbillar.cat/ca/jugador/ranking/historial": "ranking_historial.html",
+        # Reutilitzem la fixture del 121 com a fake del 112 (mateixa estructura).
+        # fetch_ranking_html prova primer 'datahome', després 'data'.
+        "https://www.fcbillar.cat/ca/jugador/ranking/data/112/2#red": "ranking_lliure_121.html",
+    }
+    client = StubScraperClient(settings, fixtures)
+    res = backfill_historical(
+        client, modalitat_codi_fcb=2, top_n=0, settings=settings
+    )
+    # 1 OK (el 112/2 amb fixture) + 14 fallats (la resta sense fixture).
+    assert res.rankings_processed == [(112, 2)]
+    assert len(res.rankings_failed) == 14
+    assert res.total_players_processed == 0  # top_n=0 evita partides
+    assert res.total_games_upserted == 0
+
+
+def test_backfill_historical_filters_by_modalitat(settings: StubSettings) -> None:
+    """Amb modalitat_codi_fcb=None, processa totes les modalitats (15×5=75 entries)."""
+    fixtures = {
+        "https://www.fcbillar.cat/ca/jugador/ranking/historial": "ranking_historial.html",
+    }
+    client = StubScraperClient(settings, fixtures)
+    # Sense fixture per a cap rànquing → tots fallen.
+    res = backfill_historical(client, modalitat_codi_fcb=None, top_n=0, settings=settings)
+    assert len(res.rankings_processed) == 0
+    # 15 entries × 5 modalitats = 75 intents fallats.
+    assert len(res.rankings_failed) == 75

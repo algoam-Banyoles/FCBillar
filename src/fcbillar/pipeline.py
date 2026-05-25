@@ -11,11 +11,13 @@ from fcbillar.db.repository import Repository
 from fcbillar.models import Game, Ranking, RankingGameLink
 from fcbillar.scraper.client import ScraperClient
 from fcbillar.scraper.parsers import (
+    HistorialEntry,
     HomeRankingsResult,
     RawGameRow,
     parse_home_current_rankings,
     parse_partides_jugador,
     parse_ranking,
+    parse_ranking_historial,
 )
 from fcbillar.scraper.url_builder import all_ranking_url_candidates
 
@@ -37,11 +39,25 @@ class IngestRankingResult:
 
 
 def fetch_ranking_html(
-    client: ScraperClient, num_seq: int, modalitat_codi_fcb: int
+    client: ScraperClient,
+    num_seq: int,
+    modalitat_codi_fcb: int,
+    *,
+    preferred_format: str | None = None,
 ) -> FetchResult | None:
-    """Prova els dos formats d'URL i retorna el primer que retorni HTML útil."""
+    """Prova els formats d'URL i retorna el primer que retorni rànquing parsejable.
+
+    Amb `preferred_format` (p.ex. 'data' o 'datahome'), prova aquest primer
+    i l'altre com a fallback. Sense, l'ordre per defecte de
+    `all_ranking_url_candidates` és 'datahome' primer (rànquing actual).
+    """
     settings = client.settings
-    for fmt, url in all_ranking_url_candidates(settings.base_url, num_seq, modalitat_codi_fcb):
+    candidates = all_ranking_url_candidates(settings.base_url, num_seq, modalitat_codi_fcb)
+    if preferred_format is not None:
+        candidates = sorted(
+            candidates, key=lambda c: 0 if c[0] == preferred_format else 1
+        )
+    for fmt, url in candidates:
         try:
             html = client.fetch_html(url)
         except Exception as e:
@@ -54,10 +70,18 @@ def fetch_ranking_html(
 
 
 def _looks_like_valid_ranking(html: str) -> bool:
+    """Heurística estricta: rànquing vàlid té la secció principal + una taula.
+
+    El portal sovint serveix una pàgina d'error 'silenciosa' (200 OK, HTML
+    petit) quan demanes un num_seq amb el format equivocat (p.ex. 'datahome'
+    per a un rànquing antic). Aquesta heurística evita acceptar-la.
+    """
     if not html or len(html) < 500:
         return False
-    # Si renderitza el form de login, vol dir que la sessió no és vàlida.
     if "formloguinacion" in html:
+        return False
+    # La secció + taula són el marcador estructural del rànquing.
+    if "three fourths padded" not in html or "<table" not in html:
         return False
     return True
 
@@ -68,10 +92,13 @@ def ingest_ranking(
     modalitat_codi_fcb: int,
     *,
     settings: Settings | None = None,
+    preferred_format: str | None = None,
 ) -> IngestRankingResult | None:
     """Descarrega un rànquing, el parseja i el persisteix a la BD."""
     settings = settings or client.settings
-    fetched = fetch_ranking_html(client, num_seq, modalitat_codi_fcb)
+    fetched = fetch_ranking_html(
+        client, num_seq, modalitat_codi_fcb, preferred_format=preferred_format
+    )
     if fetched is None:
         return None
 
@@ -114,8 +141,27 @@ class IngestPartidesResult:
     links_created: int
 
 
-def _partideshome_url(base_url: str, num_seq: int, modalitat: int, player_fcb_id: str) -> str:
-    return f"{base_url.rstrip('/')}/ca/jugador/ranking/partideshome/{num_seq}/{modalitat}/{player_fcb_id}"
+# Mapeig de format del rànquing → segment de la URL de partides per jugador.
+# Mateix patró que rànquings: 'datahome' (actual) usa 'partideshome', 'data'
+# (històric) usa 'partides'.
+_PARTIDES_SEGMENT_BY_FORMAT = {
+    "datahome": "partideshome",
+    "data": "partides",
+}
+
+
+def _partides_url(
+    base_url: str,
+    num_seq: int,
+    modalitat: int,
+    player_fcb_id: str,
+    format_url: str = "datahome",
+) -> str:
+    segment = _PARTIDES_SEGMENT_BY_FORMAT.get(format_url, "partideshome")
+    return (
+        f"{base_url.rstrip('/')}/ca/jugador/ranking/{segment}/"
+        f"{num_seq}/{modalitat}/{player_fcb_id}"
+    )
 
 
 def ingest_partides(
@@ -145,13 +191,16 @@ def ingest_partides(
             f"Player {player_fcb_id} no està a la BD; "
             f"ingest primer el rànquing on apareix."
         )
-    if repo.get_ranking_id(num_seq, modalitat_codi_fcb) is None:
+    format_url = repo.get_ranking_format_url(num_seq, modalitat_codi_fcb)
+    if format_url is None:
         raise ValueError(
             f"Rànquing {num_seq}/{modalitat_codi_fcb} no està a la BD; "
             f"`ingest-ranking {num_seq} {modalitat_codi_fcb}` primer."
         )
 
-    url = _partideshome_url(settings.base_url, num_seq, modalitat_codi_fcb, player_fcb_id)
+    url = _partides_url(
+        settings.base_url, num_seq, modalitat_codi_fcb, player_fcb_id, format_url=format_url
+    )
     html = client.fetch_html(url)
     parsed = parse_partides_jugador(html)
 
@@ -257,6 +306,18 @@ def discover_current_rankings(client: ScraperClient) -> HomeRankingsResult:
     return parse_home_current_rankings(html)
 
 
+def discover_historical_rankings(client: ScraperClient) -> list[HistorialEntry]:
+    """Descobreix els rànquings històrics consultant /ca/jugador/ranking/historial.
+
+    El portal mostra els ~15 més recents. Per a un backfill realment complet
+    caldria iterar per num_seq més enrere consultant URLs directament, però per
+    ara l'historial és la font primària.
+    """
+    url = f"{client.settings.base_url.rstrip('/')}/ca/jugador/ranking/historial"
+    html = client.fetch_html(url, use_cache=False)
+    return parse_ranking_historial(html)
+
+
 def sync_current_rankings(
     client: ScraperClient, *, settings: Settings | None = None
 ) -> SyncResult:
@@ -288,38 +349,40 @@ class BackfillResult:
     total_games_skipped: int
 
 
-def backfill_modalitat(
+@dataclass
+class HistoricalBackfillResult:
+    rankings_processed: list[tuple[int, int]]  # llista (num_seq, modalitat)
+    rankings_failed: list[tuple[int, int]]
+    total_players_processed: int
+    total_games_upserted: int
+    total_games_skipped: int
+
+
+def backfill_ranking(
     client: ScraperClient,
+    num_seq: int,
     modalitat_codi_fcb: int,
     *,
     top_n: int | None = None,
     only_followed: bool = False,
     settings: Settings | None = None,
+    preferred_format: str | None = None,
 ) -> BackfillResult:
-    """Backfill MVP: ingereix el rànquing actual i les partides dels top-N i/o seguits.
+    """Ingest un rànquing concret + partides dels jugadors filtrats.
 
-    El "rànquing actual" es descobreix sempre de /jugador/home (és el que la
-    federació publica com a vigent, no sempre present a /ranking/historial).
+    Filtres aplicats sobre les entries del rànquing:
+      - `top_n`: només els jugadors amb posició ≤ top_n.
+      - `only_followed`: només els jugadors marcats com a seguits.
     """
     settings = settings or client.settings
-    home = discover_current_rankings(client)
-    current = next(
-        (r for r in home.rankings if r.modalitat_codi_fcb == modalitat_codi_fcb), None
+    res = ingest_ranking(
+        client, num_seq, modalitat_codi_fcb, settings=settings, preferred_format=preferred_format
     )
-    if current is None:
-        raise ValueError(
-            f"Modalitat {modalitat_codi_fcb} no apareix als rànquings actuals de la home"
-        )
-
-    res = ingest_ranking(client, current.num_seq, modalitat_codi_fcb, settings=settings)
     if res is None:
         return BackfillResult(False, 0, 0, 0)
 
     conn = ensure_schema(settings.db_path)
-    repo = Repository(conn)
-
-    # Decidim quins jugadors processar.
-    candidates: list[tuple[str, int]] = []  # (fcb_id, posicio)
+    candidates: list[tuple[str, int | None]] = []
     rows = conn.execute(
         """
         SELECT p.fcb_id, e.posicio, p.seguiment
@@ -330,7 +393,7 @@ def backfill_modalitat(
         WHERE r.num_seq = ? AND m.codi_fcb = ?
         ORDER BY e.posicio ASC NULLS LAST
         """,
-        (current.num_seq, modalitat_codi_fcb),
+        (num_seq, modalitat_codi_fcb),
     ).fetchall()
     for fcb_id, posicio, seguiment in rows:
         if only_followed and not seguiment:
@@ -344,7 +407,7 @@ def backfill_modalitat(
     for fcb_id, _ in candidates:
         try:
             r = ingest_partides(
-                client, current.num_seq, modalitat_codi_fcb, fcb_id, settings=settings
+                client, num_seq, modalitat_codi_fcb, fcb_id, settings=settings
             )
             total_up += r.games_upserted
             total_skip += r.games_skipped_missing_opponent
@@ -354,6 +417,96 @@ def backfill_modalitat(
     return BackfillResult(
         ranking_ingested=True,
         players_processed=len(candidates),
+        total_games_upserted=total_up,
+        total_games_skipped=total_skip,
+    )
+
+
+def backfill_modalitat(
+    client: ScraperClient,
+    modalitat_codi_fcb: int,
+    *,
+    top_n: int | None = None,
+    only_followed: bool = False,
+    settings: Settings | None = None,
+) -> BackfillResult:
+    """Backfill del rànquing actual d'una modalitat (descobert de /jugador/home)."""
+    settings = settings or client.settings
+    home = discover_current_rankings(client)
+    current = next(
+        (r for r in home.rankings if r.modalitat_codi_fcb == modalitat_codi_fcb), None
+    )
+    if current is None:
+        raise ValueError(
+            f"Modalitat {modalitat_codi_fcb} no apareix als rànquings actuals de la home"
+        )
+    return backfill_ranking(
+        client,
+        current.num_seq,
+        modalitat_codi_fcb,
+        top_n=top_n,
+        only_followed=only_followed,
+        settings=settings,
+    )
+
+
+def backfill_historical(
+    client: ScraperClient,
+    *,
+    modalitat_codi_fcb: int | None = None,
+    top_n: int | None = None,
+    only_followed: bool = False,
+    settings: Settings | None = None,
+) -> HistoricalBackfillResult:
+    """Backfill tots els rànquings que apareixen a l'historial.
+
+    Si es passa `modalitat_codi_fcb`, només es processa aquesta modalitat.
+    Iterem en ordre cronològic ascendent (rànquings antics primer) perquè
+    els upserts mantinguin coherència temporal.
+    """
+    settings = settings or client.settings
+    entries = discover_historical_rankings(client)
+    # Aplanem a llista (num_seq, modalitat) ordenada cronològicament ascendent.
+    flat: list[tuple[int, int]] = []
+    flat_with_fmt: list[tuple[int, int, str]] = []
+    for entry in sorted(entries, key=lambda e: e.data):
+        for modalitat, (fmt, num_seq) in entry.rankings.items():
+            if modalitat_codi_fcb is not None and modalitat != modalitat_codi_fcb:
+                continue
+            flat_with_fmt.append((num_seq, modalitat, fmt))
+
+    processed: list[tuple[int, int]] = []
+    failed: list[tuple[int, int]] = []
+    total_players = 0
+    total_up = 0
+    total_skip = 0
+    for num_seq, modalitat, fmt in flat_with_fmt:
+        try:
+            res = backfill_ranking(
+                client,
+                num_seq,
+                modalitat,
+                top_n=top_n,
+                only_followed=only_followed,
+                settings=settings,
+                preferred_format=fmt,
+            )
+        except Exception as e:
+            log.warning("Backfill històric: error a %s/%s: %s", num_seq, modalitat, e)
+            failed.append((num_seq, modalitat))
+            continue
+        if not res.ranking_ingested:
+            failed.append((num_seq, modalitat))
+            continue
+        processed.append((num_seq, modalitat))
+        total_players += res.players_processed
+        total_up += res.total_games_upserted
+        total_skip += res.total_games_skipped
+
+    return HistoricalBackfillResult(
+        rankings_processed=processed,
+        rankings_failed=failed,
+        total_players_processed=total_players,
         total_games_upserted=total_up,
         total_games_skipped=total_skip,
     )

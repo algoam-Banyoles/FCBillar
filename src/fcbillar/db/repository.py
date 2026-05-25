@@ -176,6 +176,17 @@ class Repository:
         ).fetchone()
         return row[0] if row else None
 
+    def get_ranking_format_url(self, num_seq: int, modalitat_codi_fcb: int) -> str | None:
+        row = self.conn.execute(
+            """
+            SELECT r.format_url FROM rankings r
+            JOIN modalitats m ON m.id = r.modalitat_id
+            WHERE r.num_seq = ? AND m.codi_fcb = ?
+            """,
+            (num_seq, modalitat_codi_fcb),
+        ).fetchone()
+        return row[0] if row else None
+
     def latest_ranking_num_seq(self, modalitat_codi_fcb: int) -> int | None:
         row = self.conn.execute(
             """

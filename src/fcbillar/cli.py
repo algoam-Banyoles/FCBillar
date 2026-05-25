@@ -20,6 +20,7 @@ from fcbillar.config import get_settings
 from fcbillar.db.migrations import ensure_schema
 from fcbillar.db.repository import Repository
 from fcbillar.pipeline import (
+    backfill_historical,
     backfill_modalitat,
     fetch_ranking_html,
     ingest_partides,
@@ -172,30 +173,55 @@ def sync() -> None:
 
 @app.command()
 def backfill(
-    modalitat: int = typer.Argument(..., help="Codi de modalitat (1=tres bandes, 2=lliure, ...)"),
+    modalitat: int = typer.Argument(
+        ...,
+        help="Codi de modalitat (1=tres bandes, 2=lliure, ...). Amb --historical: 0=totes les modalitats.",
+    ),
     top: int | None = typer.Option(
         None, "--top", help="Limitar a top-N jugadors del rànquing (per defecte tots)"
     ),
     only_followed: bool = typer.Option(
         False, "--only-followed", help="Només jugadors marcats com a seguits"
     ),
+    historical: bool = typer.Option(
+        False, "--historical", help="Ingerir tots els rànquings de l'historial (no només l'actual)"
+    ),
 ) -> None:
-    """Backfill MVP del rànquing actual d'una modalitat + partides dels seleccionats."""
+    """Backfill del rànquing actual (o tot l'historial amb --historical) + partides."""
     settings = get_settings()
     with ScraperClient(settings) as client:
-        result = backfill_modalitat(
-            client,
-            modalitat,
-            top_n=top,
-            only_followed=only_followed,
-            settings=settings,
-        )
-    console.print(
-        f"[green]OK backfill modalitat {modalitat}: "
-        f"{result.players_processed} jugadors processats, "
-        f"{result.total_games_upserted} partides desades, "
-        f"{result.total_games_skipped} saltades.[/]"
-    )
+        if historical:
+            mod_filter = None if modalitat == 0 else modalitat
+            res = backfill_historical(
+                client,
+                modalitat_codi_fcb=mod_filter,
+                top_n=top,
+                only_followed=only_followed,
+                settings=settings,
+            )
+            console.print(
+                f"[green]OK backfill històric: {len(res.rankings_processed)} rànquings processats, "
+                f"{len(res.rankings_failed)} fallats, "
+                f"{res.total_players_processed} (player,ranking) processats, "
+                f"{res.total_games_upserted} partides desades, "
+                f"{res.total_games_skipped} saltades.[/]"
+            )
+            if res.rankings_failed:
+                console.print(f"[yellow]Rànquings fallats: {res.rankings_failed}[/]")
+        else:
+            result = backfill_modalitat(
+                client,
+                modalitat,
+                top_n=top,
+                only_followed=only_followed,
+                settings=settings,
+            )
+            console.print(
+                f"[green]OK backfill modalitat {modalitat}: "
+                f"{result.players_processed} jugadors processats, "
+                f"{result.total_games_upserted} partides desades, "
+                f"{result.total_games_skipped} saltades.[/]"
+            )
 
 
 if __name__ == "__main__":
