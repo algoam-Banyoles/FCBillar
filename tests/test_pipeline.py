@@ -17,6 +17,7 @@ from fcbillar.pipeline import (
     backfill_modalitat,
     backfill_ranking,
     ingest_lliga_encontre,
+    ingest_lliga_grup,
     ingest_lliga_jornada,
     ingest_partides,
     ingest_ranking,
@@ -582,3 +583,50 @@ def test_ingest_lliga_jornada_processes_all_encontres(settings: StubSettings) ->
     assert counts["encontres_lliga"] == 4
     assert counts["equips"] == 8
     assert counts["clubs"] == 7
+
+
+# ---------------- ingest_lliga_grup ----------------
+
+
+def test_ingest_lliga_grup_iterates_jornades(settings: StubSettings) -> None:
+    """ingest_lliga_grup descobreix les 14 jornades del GRUP A HONOR i les itera.
+
+    Només mappejem fixtures per la jornada 01 (les altres 13 fallaran a fetch
+    encontres, però el comptador failed ho reflectirà sense petar).
+    """
+    fixtures = {
+        "https://www.fcbillar.cat/ca/lligues/jornades/36/148/316": (
+            "lliga_3b_honor_grupA_jornades.html"
+        ),
+        # Només jornada 01 té fixture; els altres jornada_id fallaran amb KeyError.
+        "https://www.fcbillar.cat/ca/lligues/encontres/36/148/316/2593": (
+            "lliga_3b_jornada01_encontres.html"
+        ),
+        "https://www.fcbillar.cat/ca/lligues/partides/36/148/316/2593/10939": (
+            "lliga_3b_encontre_partides.html"
+        ),
+        "https://www.fcbillar.cat/ca/lligues/partides/36/148/316/2593/10941": (
+            "lliga_3b_encontre_partides.html"
+        ),
+        "https://www.fcbillar.cat/ca/lligues/partides/36/148/316/2593/10943": (
+            "lliga_3b_encontre_partides.html"
+        ),
+        "https://www.fcbillar.cat/ca/lligues/partides/36/148/316/2593/10945": (
+            "lliga_3b_encontre_partides.html"
+        ),
+    }
+    client = StubScraperClient(settings, fixtures)
+    result = ingest_lliga_grup(
+        client,
+        lliga_id=36,
+        divisio_id=148,
+        grup_id=316,
+        modalitat_codi_fcb=1,
+        create_missing_players=True,  # perquè la jornada 01 desi els games
+        settings=settings,
+    )
+    # 14 jornades trobades, 1 processada OK (la 01), 13 fallades (KeyError).
+    assert result.jornades_processed == 1
+    assert result.jornades_failed == 13
+    assert result.total_encontres == 4  # només de la jornada 01
+    assert result.total_games_upserted == 16  # 4 encontres × 4 partides

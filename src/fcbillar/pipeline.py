@@ -28,6 +28,7 @@ from fcbillar.scraper.parsers import (
     RawGameRow,
     parse_home_current_rankings,
     parse_lliga_encontres,
+    parse_lliga_jornades,
     parse_lliga_partides,
     parse_partides_jugador,
     parse_ranking,
@@ -843,6 +844,86 @@ def ingest_lliga_jornada(
     return IngestLligaJornadaResult(
         encontres_processed=processed,
         encontres_failed=failed,
+        total_games_upserted=total_up,
+        total_games_skipped=total_skip,
+    )
+
+
+@dataclass
+class IngestLligaGrupResult:
+    jornades_processed: int
+    jornades_failed: int
+    total_encontres: int
+    total_games_upserted: int
+    total_games_skipped: int
+
+
+def _lliga_jornades_url(
+    base_url: str, lliga: int, divisio: int, grup: int
+) -> str:
+    return f"{base_url.rstrip('/')}/ca/lligues/jornades/{lliga}/{divisio}/{grup}"
+
+
+def ingest_lliga_grup(
+    client: ScraperClient,
+    lliga_id: int,
+    divisio_id: int,
+    grup_id: int,
+    *,
+    modalitat_codi_fcb: int,
+    competicio_nom: str = "LLIGA",
+    create_missing_players: bool = False,
+    settings: Settings | None = None,
+) -> IngestLligaGrupResult:
+    """Ingest totes les jornades d'un grup de lliga.
+
+    Fetch la pàgina de jornades del grup → llista de jornades amb data →
+    per cada una, fa ingest_lliga_jornada (passant la data per derivar
+    la temporada).
+    """
+    settings = settings or client.settings
+    url = _lliga_jornades_url(settings.base_url, lliga_id, divisio_id, grup_id)
+    html = client.fetch_html(url)
+    jornades = parse_lliga_jornades(html)
+
+    processed = 0
+    failed = 0
+    total_enc = 0
+    total_up = 0
+    total_skip = 0
+    for jornada in jornades:
+        try:
+            res = ingest_lliga_jornada(
+                client,
+                lliga_id=jornada.lliga_id,
+                divisio_id=jornada.divisio_id,
+                grup_id=jornada.grup_id,
+                jornada_id=jornada.jornada_id,
+                modalitat_codi_fcb=modalitat_codi_fcb,
+                data=jornada.data,
+                competicio_nom=competicio_nom,
+                settings=settings,
+                create_missing_players=create_missing_players,
+            )
+        except Exception as e:
+            log.warning(
+                "Error ingerint jornada %d/%d/%d/%d: %s",
+                jornada.lliga_id,
+                jornada.divisio_id,
+                jornada.grup_id,
+                jornada.jornada_id,
+                e,
+            )
+            failed += 1
+            continue
+        processed += 1
+        total_enc += res.encontres_processed
+        total_up += res.total_games_upserted
+        total_skip += res.total_games_skipped
+    return IngestLligaGrupResult(
+        jornades_processed=processed,
+        jornades_failed=failed,
+        total_encontres=total_enc,
         total_games_upserted=total_up,
         total_games_skipped=total_skip,
     )

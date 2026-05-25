@@ -23,6 +23,7 @@ from fcbillar.pipeline import (
     backfill_historical,
     backfill_modalitat,
     fetch_ranking_html,
+    ingest_lliga_grup,
     ingest_lliga_jornada,
     ingest_partides,
     ingest_ranking,
@@ -271,6 +272,39 @@ def ingest_lliga_jornada_cmd(
     console.print(
         f"[green]OK jornada {lliga_id}/{divisio_id}/{grup_id}/{jornada_id}: "
         f"{result.encontres_processed} encontres ({result.encontres_failed} fallats), "
+        f"{result.total_games_upserted} partides desades, "
+        f"{result.total_games_skipped} saltades.[/]"
+    )
+
+
+@app.command("ingest-lliga-grup")
+def ingest_lliga_grup_cmd(
+    lliga_id: int = typer.Argument(..., help="Id de la lliga (36=TRES BANDES, 37=4 MODALITATS)"),
+    divisio_id: int = typer.Argument(..., help="Id de la divisió"),
+    grup_id: int = typer.Argument(..., help="Id del grup"),
+    modalitat: int = typer.Option(1, "--modalitat", help="Codi de modalitat"),
+    create_missing_players: bool = typer.Option(
+        False,
+        "--create-missing-players",
+        help="Crea placeholders pels jugadors no registrats",
+    ),
+) -> None:
+    """Ingest totes les jornades d'un grup de lliga (descobreix automàticament)."""
+    settings = get_settings()
+    with ScraperClient(settings) as client:
+        result = ingest_lliga_grup(
+            client,
+            lliga_id=lliga_id,
+            divisio_id=divisio_id,
+            grup_id=grup_id,
+            modalitat_codi_fcb=modalitat,
+            settings=settings,
+            create_missing_players=create_missing_players,
+        )
+    console.print(
+        f"[green]OK grup {lliga_id}/{divisio_id}/{grup_id}: "
+        f"{result.jornades_processed} jornades ({result.jornades_failed} fallades), "
+        f"{result.total_encontres} encontres, "
         f"{result.total_games_upserted} partides desades, "
         f"{result.total_games_skipped} saltades.[/]"
     )
