@@ -344,6 +344,310 @@ def parse_home_current_rankings(html: str) -> HomeRankingsResult:
     return HomeRankingsResult(data_ranking=data_ranking, rankings=out)
 
 
+# --------------------------- pàgines públiques de lliga ---------------------------
+
+
+# Regex que matcha URLs de jornades/classificació de lliga:
+#   ca/lligues/jornades/{lliga}/{divisio}/{grup}
+#   ca/lligues/classificacio/{lliga}/{divisio}/{grup}
+_LLIGA_GRUP_HREF_RE = re.compile(
+    r"lligues/(?:jornades|classificacio)/(\d+)/(\d+)/(\d+)"
+)
+
+# Regex per als encontres dins d'una jornada:
+#   ca/lligues/partides/{lliga}/{divisio}/{grup}/{jornada}/{encontre}
+_LLIGA_PARTIDES_HREF_RE = re.compile(
+    r"lligues/partides/(\d+)/(\d+)/(\d+)/(\d+)/(\d+)"
+)
+
+
+@dataclass(frozen=True)
+class LligaGrup:
+    """Un grup dins d'una divisió de lliga."""
+
+    lliga_id: int
+    divisio_id: int
+    grup_id: int
+    nom: str  # "GRUP A", "HONOR FINAL", ...
+    club_responsable: str | None = None
+
+
+def parse_lliga_grups(html: str) -> list[LligaGrup]:
+    """Parseja /ca/lligues/grups/{lliga}/{divisio} → llista de grups.
+
+    Estructura: cada grup és una fila amb tres divs (nom, responsable, link
+    de classificació). El nom del grup ve del text del link "jornades",
+    i el lliga_id/divisio_id/grup_id es deriven de l'href.
+    """
+    soup = BeautifulSoup(html, "lxml")
+    section = soup.select_one("section.three.fourths.padded")
+    if section is None:
+        raise ValueError("Secció principal no trobada a la pàgina de grups")
+
+    out: list[LligaGrup] = []
+    # Cada grup és un <div class="row box info"> amb un <a> que apunta a
+    # ca/lligues/jornades/...
+    for box in section.select("div.row.box.info"):
+        link = box.select_one("a[href]")
+        if link is None:
+            continue
+        m = _LLIGA_GRUP_HREF_RE.search(link["href"])
+        if m is None:
+            continue
+        # Responsable: el segon dels 3 divs "four twelfths".
+        cells = box.select("div.four.twelfths")
+        responsable: str | None = None
+        if len(cells) >= 2:
+            responsable = cells[1].get_text(strip=True) or None
+        out.append(
+            LligaGrup(
+                lliga_id=int(m.group(1)),
+                divisio_id=int(m.group(2)),
+                grup_id=int(m.group(3)),
+                nom=_text(link).upper(),
+                club_responsable=responsable,
+            )
+        )
+    return out
+
+
+@dataclass(frozen=True)
+class LligaJornadaLink:
+    """Link a una jornada concreta dins d'un grup."""
+
+    lliga_id: int
+    divisio_id: int
+    grup_id: int
+    jornada_id: int
+    nom: str  # "Jornada 01"
+    data: date | None
+
+
+# Patró d'href per a jornades: ca/lligues/encontres/{lliga}/{divisio}/{grup}/{jornada}
+_LLIGA_ENCONTRES_HREF_RE = re.compile(
+    r"lligues/encontres/(\d+)/(\d+)/(\d+)/(\d+)"
+)
+
+
+def parse_lliga_jornades(html: str) -> list[LligaJornadaLink]:
+    """Parseja /ca/lligues/jornades/{lliga}/{divisio}/{grup} → llista de jornades."""
+    soup = BeautifulSoup(html, "lxml")
+    section = soup.select_one("section.three.fourths.padded")
+    if section is None:
+        raise ValueError("Secció principal no trobada a la pàgina de jornades")
+    out: list[LligaJornadaLink] = []
+    for box in section.select("div.row.box.info"):
+        link = box.select_one("a[href]")
+        if link is None:
+            continue
+        m = _LLIGA_ENCONTRES_HREF_RE.search(link["href"])
+        if m is None:
+            continue
+        # Data: dins d'un <b> a la segona cel·la.
+        data_val: date | None = None
+        b = box.select_one("div.six.twelfths.mobile + div.six.twelfths.mobile b")
+        if b is not None:
+            try:
+                data_val = date.fromisoformat(_text(b))
+            except ValueError:
+                data_val = None
+        out.append(
+            LligaJornadaLink(
+                lliga_id=int(m.group(1)),
+                divisio_id=int(m.group(2)),
+                grup_id=int(m.group(3)),
+                jornada_id=int(m.group(4)),
+                nom=_text(link),
+                data=data_val,
+            )
+        )
+    return out
+
+
+@dataclass(frozen=True)
+class LligaEncontre:
+    """Un encontre dins d'una jornada: equip local vs equip visitant amb resultat."""
+
+    lliga_id: int
+    divisio_id: int
+    grup_id: int
+    jornada_id: int
+    encontre_id: int
+    equip_local: str
+    p_parcials_local: int | None
+    p_match_local: int | None
+    equip_visitant: str
+    p_parcials_visitant: int | None
+    p_match_visitant: int | None
+
+
+_P_VALUE_RE = re.compile(r"<b>\s*(\d+)\s*</b>")
+
+
+def parse_lliga_encontres(html: str) -> list[LligaEncontre]:
+    """Parseja /ca/lligues/encontres/{lliga}/{divisio}/{grup}/{jornada}."""
+    soup = BeautifulSoup(html, "lxml")
+    section = soup.select_one("section.three.fourths.padded")
+    if section is None:
+        raise ValueError("Secció principal no trobada a la pàgina d'encontres")
+    out: list[LligaEncontre] = []
+    for box in section.select("div.row.box.info"):
+        link = box.select_one("a[href]")
+        if link is None:
+            continue
+        m = _LLIGA_PARTIDES_HREF_RE.search(link["href"])
+        if m is None:
+            continue
+        cells = box.select("div.six.twelfths")
+        if len(cells) < 4:
+            continue
+        equip_local = _text(cells[0])
+        equip_visitant = _text(cells[2])
+        p_parcials_local, p_match_local = _extract_parcials_match(str(cells[1]))
+        p_parcials_visitant, p_match_visitant = _extract_parcials_match(str(cells[3]))
+        out.append(
+            LligaEncontre(
+                lliga_id=int(m.group(1)),
+                divisio_id=int(m.group(2)),
+                grup_id=int(m.group(3)),
+                jornada_id=int(m.group(4)),
+                encontre_id=int(m.group(5)),
+                equip_local=equip_local,
+                p_parcials_local=p_parcials_local,
+                p_match_local=p_match_local,
+                equip_visitant=equip_visitant,
+                p_parcials_visitant=p_parcials_visitant,
+                p_match_visitant=p_match_visitant,
+            )
+        )
+    return out
+
+
+def _extract_parcials_match(cell_html: str) -> tuple[int | None, int | None]:
+    """Cel·la del tipus 'P. Parcials <b>5</b> P. Match <b>3</b>'."""
+    values = _P_VALUE_RE.findall(cell_html)
+    parcials = int(values[0]) if len(values) >= 1 else None
+    match = int(values[1]) if len(values) >= 2 else None
+    return parcials, match
+
+
+@dataclass(frozen=True)
+class LligaPartidaRow:
+    """Una partida individual dins d'un encontre de lliga, amb camps rics."""
+
+    data_partida: date | None
+    modalitat: str  # "Tres bandes", "Lliure", ...
+    local_nom: str
+    local_caramboles: int | None
+    local_serie_major: int | None
+    local_punts: int | None
+    visitant_nom: str
+    visitant_caramboles: int | None
+    visitant_serie_major: int | None
+    visitant_punts: int | None
+    entrades: int | None
+    arbitre: str | None
+    assistencia: str | None
+
+
+def parse_lliga_partides(html: str) -> list[LligaPartidaRow]:
+    """Parseja /ca/lligues/partides/.../{encontre} → llista de partides individuals.
+
+    Cada partida és un `<div class="row box info padded">` amb camps dins de
+    `<div class="three ninths">` (noms) i `<div class="two ninths">` (la resta).
+    La data NO sortia inline a la fixture observada; els tests la deixen None.
+    """
+    soup = BeautifulSoup(html, "lxml")
+    section = soup.select_one("section.three.fourths.padded")
+    if section is None:
+        raise ValueError("Secció principal no trobada a la pàgina de partides de lliga")
+
+    out: list[LligaPartidaRow] = []
+    for box in section.select("div.row.box.info.padded"):
+        kv = _extract_partida_kv(box)
+        if "Local" not in kv or "Visitant" not in kv:
+            continue
+        local = kv["Local"]
+        visitant = kv["Visitant"]
+        out.append(
+            LligaPartidaRow(
+                data_partida=kv.get("data"),
+                modalitat=kv.get("Modalitat", ""),
+                local_nom=local["nom"],
+                local_caramboles=local.get("Caramboles"),
+                local_serie_major=local.get("Sèrie major"),
+                local_punts=local.get("Punts"),
+                visitant_nom=visitant["nom"],
+                visitant_caramboles=visitant.get("Caramboles"),
+                visitant_serie_major=visitant.get("Sèrie major"),
+                visitant_punts=visitant.get("Punts"),
+                entrades=kv.get("Entrades"),
+                arbitre=kv.get("Àrbitre"),
+                assistencia=kv.get("Assistència"),
+            )
+        )
+    return out
+
+
+def _extract_partida_kv(box: Tag) -> dict:
+    """Extreu un dict 'flat' dels camps d'un box de partida de lliga.
+
+    L'HTML segueix l'ordre:
+      - 1r .three.ninths = nom Local (sense label, només <b>NOM</b>)
+      - 3 .two.ninths = Caramboles/Sèrie major/Punts del local
+      - 1r .three.ninths = nom Visitant
+      - 3 .two.ninths = camps del visitant
+      - .three.ninths Entrades + .two.ninths Àrbitre + .two.ninths Assistència + .two.ninths Modalitat
+
+    Retornem un dict amb les claus Local i Visitant (dicts amb nom+stats) i
+    els camps generals com a clau-valor simple.
+    """
+    name_cells = box.select("div.three.ninths")
+    stat_cells = box.select("div.two.ninths")
+    kv: dict = {}
+    if len(name_cells) < 2:
+        return kv
+    # Local: nom (primera three.ninths) + primeres 3 two.ninths (Caramboles, Sèrie, Punts).
+    local = {"nom": _text(name_cells[0].find("b") or name_cells[0])}
+    for cell in stat_cells[:3]:
+        k, v = _parse_labelled_cell(cell)
+        if k:
+            local[k] = v
+    # Visitant: nom (segona three.ninths) + següents 3 two.ninths.
+    visitant = {"nom": _text(name_cells[1].find("b") or name_cells[1])}
+    for cell in stat_cells[3:6]:
+        k, v = _parse_labelled_cell(cell)
+        if k:
+            visitant[k] = v
+    kv["Local"] = local
+    kv["Visitant"] = visitant
+    # Camps generals: Entrades (3a three.ninths), més les two.ninths restants.
+    if len(name_cells) >= 3:
+        k, v = _parse_labelled_cell(name_cells[2])
+        if k:
+            kv[k] = v
+    for cell in stat_cells[6:]:
+        k, v = _parse_labelled_cell(cell)
+        if k:
+            kv[k] = v
+    return kv
+
+
+def _parse_labelled_cell(cell: Tag) -> tuple[str | None, object]:
+    """Cel·la del tipus `<b>Caramboles</b> 40` o `<b>Àrbitre</b> BOTERO`."""
+    b = cell.find("b")
+    if b is None:
+        return None, None
+    label = _text(b)
+    # El valor és tot el text de la cel·la menys l'etiqueta.
+    full = cell.get_text(separator=" ", strip=True)
+    value_str = full[len(label):].strip()
+    # Camps numèrics:
+    if label in {"Caramboles", "Sèrie major", "Punts", "Entrades"}:
+        return label, _parse_int(value_str)
+    return label, value_str or None
+
+
 def _parse_partida_row(cells: list[Tag], competicio: str) -> RawGameRow:
     data_str = _text(cells[0])
     try:

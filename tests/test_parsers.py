@@ -10,6 +10,10 @@ import pytest
 from fcbillar.scraper.parsers import (
     HistorialEntry,
     parse_home_current_rankings,
+    parse_lliga_encontres,
+    parse_lliga_grups,
+    parse_lliga_jornades,
+    parse_lliga_partides,
     parse_partides_jugador,
     parse_ranking,
     parse_ranking_historial,
@@ -189,3 +193,88 @@ def test_parse_home_current_rankings(home_authed_html: str) -> None:
     # Totes apunten al num_seq 121 amb format datahome.
     assert all(r.num_seq == 121 for r in result.rankings)
     assert all(r.format_url == "datahome" for r in result.rankings)
+
+
+# ---------------- parsers de lliga catalana ----------------
+
+
+@pytest.fixture
+def lliga_grups_html() -> str:
+    return (FIXTURES / "lliga_3bandes_honor.html").read_text(encoding="utf-8")
+
+
+@pytest.fixture
+def lliga_jornades_html() -> str:
+    return (FIXTURES / "lliga_3b_honor_grupA_jornades.html").read_text(encoding="utf-8")
+
+
+@pytest.fixture
+def lliga_encontres_html() -> str:
+    return (FIXTURES / "lliga_3b_jornada01_encontres.html").read_text(encoding="utf-8")
+
+
+@pytest.fixture
+def lliga_partides_html() -> str:
+    return (FIXTURES / "lliga_3b_encontre_partides.html").read_text(encoding="utf-8")
+
+
+def test_parse_lliga_grups_honor(lliga_grups_html: str) -> None:
+    """HONOR de la lliga tres bandes té 3 grups: FINAL HONOR, GRUP A, GRUP B."""
+    grups = parse_lliga_grups(lliga_grups_html)
+    assert len(grups) == 3
+    noms = {g.nom for g in grups}
+    assert noms == {"FINAL HONOR", "GRUP A", "GRUP B"}
+    # Tots tenen lliga_id=36 i divisio_id=148.
+    assert all(g.lliga_id == 36 and g.divisio_id == 148 for g in grups)
+    # Responsable conegut.
+    final_honor = next(g for g in grups if g.nom == "FINAL HONOR")
+    assert final_honor.club_responsable == "C.B.MATARÓ"
+    assert final_honor.grup_id == 333
+
+
+def test_parse_lliga_jornades_grup_a(lliga_jornades_html: str) -> None:
+    """GRUP A HONOR té 14 jornades amb dates."""
+    jornades = parse_lliga_jornades(lliga_jornades_html)
+    assert len(jornades) == 14
+    # Tots tenen lliga 36, divisió 148, grup 316.
+    assert all(
+        j.lliga_id == 36 and j.divisio_id == 148 and j.grup_id == 316 for j in jornades
+    )
+    # Jornada 01: 2025-09-27.
+    j01 = next(j for j in jornades if j.nom == "Jornada 01")
+    assert j01.data == date(2025, 9, 27)
+    assert j01.jornada_id == 2593
+
+
+def test_parse_lliga_encontres_jornada_01(lliga_encontres_html: str) -> None:
+    """Jornada 01 GRUP A HONOR té 4 encontres."""
+    encontres = parse_lliga_encontres(lliga_encontres_html)
+    assert len(encontres) == 4
+    # Primer encontre: C.B. SANTS "A" vs SB FOMENT MOLINS "A" (5-3, 3-0).
+    first = encontres[0]
+    assert first.equip_local == 'C.B. SANTS "A"'
+    assert first.equip_visitant == 'SB FOMENT MOLINS "A"'
+    assert first.p_parcials_local == 5
+    assert first.p_match_local == 3
+    assert first.p_parcials_visitant == 3
+    assert first.p_match_visitant == 0
+    assert first.encontre_id == 10939
+
+
+def test_parse_lliga_partides_encontre(lliga_partides_html: str) -> None:
+    """Un encontre típic té 4 partides individuals amb camps rics."""
+    partides = parse_lliga_partides(lliga_partides_html)
+    assert len(partides) == 4
+    p1 = partides[0]
+    assert p1.local_nom == "VARELA LOSADA, FRANCESC"
+    assert p1.local_caramboles == 40
+    assert p1.local_serie_major == 6
+    assert p1.local_punts == 2
+    assert p1.visitant_nom == "PERALES SANZ, JOAN"
+    assert p1.visitant_caramboles == 24
+    assert p1.visitant_serie_major == 3
+    assert p1.visitant_punts == 0
+    assert p1.entrades == 40
+    assert p1.arbitre == "BOTERO"
+    assert p1.assistencia == "Partit disputat"
+    assert p1.modalitat == "Tres bandes"
