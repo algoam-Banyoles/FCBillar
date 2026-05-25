@@ -23,11 +23,16 @@ from fcbillar.scraper.client import ScraperClient
 from fcbillar.scraper.parsers import (
     HistorialEntry,
     HomeRankingsResult,
+    LligaDivisio,
     LligaEncontre,
+    LligaGrup,
+    LligaJornadaLink,
     LligaPartidaRow,
     RawGameRow,
     parse_home_current_rankings,
+    parse_lliga_divisions,
     parse_lliga_encontres,
+    parse_lliga_grups,
     parse_lliga_jornades,
     parse_lliga_partides,
     parse_partides_jugador,
@@ -846,6 +851,60 @@ def ingest_lliga_jornada(
         encontres_failed=failed,
         total_games_upserted=total_up,
         total_games_skipped=total_skip,
+    )
+
+
+@dataclass
+class LligaTree:
+    """Estructura descoberta d'una lliga: divisions → grups → jornades."""
+
+    lliga_id: int
+    divisions: list[LligaDivisio]
+    grups_by_div: dict[int, list[LligaGrup]]  # divisio_id → grups
+    jornades_by_grup: dict[tuple[int, int], list[LligaJornadaLink]]  # (div, grup) → jornades
+
+
+def _lliga_divisions_url(base_url: str, lliga_id: int) -> str:
+    return f"{base_url.rstrip('/')}/ca/lligues/divisions/{lliga_id}"
+
+
+def _lliga_grups_url(base_url: str, lliga_id: int, divisio_id: int) -> str:
+    return f"{base_url.rstrip('/')}/ca/lligues/grups/{lliga_id}/{divisio_id}"
+
+
+def discover_lliga(
+    client: ScraperClient, lliga_id: int, *, depth: int = 2
+) -> LligaTree:
+    """Descobreix l'estructura d'una lliga sense ingerir res.
+
+    `depth` controla quants nivells es descarreguen:
+    - 1: només divisions
+    - 2: divisions + grups (per cada divisió)
+    - 3: divisions + grups + jornades (per cada grup)
+    """
+    base_url = client.settings.base_url
+    html = client.fetch_html(_lliga_divisions_url(base_url, lliga_id))
+    divisions = parse_lliga_divisions(html)
+    grups_by_div: dict[int, list[LligaGrup]] = {}
+    jornades_by_grup: dict[tuple[int, int], list[LligaJornadaLink]] = {}
+    if depth >= 2:
+        for div in divisions:
+            html = client.fetch_html(_lliga_grups_url(base_url, lliga_id, div.divisio_id))
+            grups = parse_lliga_grups(html)
+            grups_by_div[div.divisio_id] = grups
+            if depth >= 3:
+                for grup in grups:
+                    html = client.fetch_html(
+                        _lliga_jornades_url(base_url, lliga_id, div.divisio_id, grup.grup_id)
+                    )
+                    jornades_by_grup[(div.divisio_id, grup.grup_id)] = parse_lliga_jornades(
+                        html
+                    )
+    return LligaTree(
+        lliga_id=lliga_id,
+        divisions=divisions,
+        grups_by_div=grups_by_div,
+        jornades_by_grup=jornades_by_grup,
     )
 
 

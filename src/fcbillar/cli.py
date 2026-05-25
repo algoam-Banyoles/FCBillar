@@ -22,6 +22,7 @@ from fcbillar.db.repository import Repository
 from fcbillar.pipeline import (
     backfill_historical,
     backfill_modalitat,
+    discover_lliga,
     fetch_ranking_html,
     ingest_lliga_grup,
     ingest_lliga_jornada,
@@ -308,6 +309,37 @@ def ingest_lliga_grup_cmd(
         f"{result.total_games_upserted} partides desades, "
         f"{result.total_games_skipped} saltades.[/]"
     )
+
+
+@app.command("discover-lliga")
+def discover_lliga_cmd(
+    lliga_id: int = typer.Argument(..., help="Id de la lliga (36=TRES BANDES, 37=4 MODALITATS)"),
+    depth: int = typer.Option(
+        2, "--depth", min=1, max=3,
+        help="1=divisions, 2=+grups, 3=+jornades (cada nivell descarrega més)",
+    ),
+) -> None:
+    """Mostra l'estructura divisions → grups [→ jornades] d'una lliga."""
+    settings = get_settings()
+    with ScraperClient(settings) as client:
+        tree = discover_lliga(client, lliga_id, depth=depth)
+    console.print(f"[bold cyan]Lliga {tree.lliga_id} — {len(tree.divisions)} divisions[/]")
+    for div in tree.divisions:
+        console.print(f"  [yellow]{div.nom}[/] (divisio_id={div.divisio_id})")
+        if depth >= 2:
+            grups = tree.grups_by_div.get(div.divisio_id, [])
+            for grup in grups:
+                resp = f" [{grup.club_responsable}]" if grup.club_responsable else ""
+                console.print(
+                    f"    [green]{grup.nom}[/] (grup_id={grup.grup_id}){resp}"
+                )
+                if depth >= 3:
+                    jornades = tree.jornades_by_grup.get((div.divisio_id, grup.grup_id), [])
+                    for j in jornades:
+                        data_str = j.data.isoformat() if j.data else "?"
+                        console.print(
+                            f"      [dim]{j.nom}[/] jornada_id={j.jornada_id} data={data_str}"
+                        )
 
 
 if __name__ == "__main__":

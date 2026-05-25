@@ -423,10 +423,45 @@ class LligaJornadaLink:
     data: date | None
 
 
+# Patró d'href per a grups d'una divisió: ca/lligues/grups/{lliga}/{divisio}
+_LLIGA_GRUPS_HREF_RE = re.compile(
+    r"lligues/grups/(\d+)/(\d+)"
+)
+
 # Patró d'href per a jornades: ca/lligues/encontres/{lliga}/{divisio}/{grup}/{jornada}
 _LLIGA_ENCONTRES_HREF_RE = re.compile(
     r"lligues/encontres/(\d+)/(\d+)/(\d+)/(\d+)"
 )
+
+
+@dataclass(frozen=True)
+class LligaDivisio:
+    """Una divisió dins d'una lliga (HONOR, 1a, 2a, ...)."""
+
+    lliga_id: int
+    divisio_id: int
+    nom: str
+
+
+def parse_lliga_divisions(html: str) -> list[LligaDivisio]:
+    """Parseja /ca/lligues/divisions/{lliga} → llista de divisions."""
+    soup = BeautifulSoup(html, "lxml")
+    section = soup.select_one("section.three.fourths.padded")
+    if section is None:
+        raise ValueError("Secció principal no trobada a la pàgina de divisions")
+    out: list[LligaDivisio] = []
+    for link in section.select("a[href]"):
+        m = _LLIGA_GRUPS_HREF_RE.search(link["href"])
+        if m is None:
+            continue
+        out.append(
+            LligaDivisio(
+                lliga_id=int(m.group(1)),
+                divisio_id=int(m.group(2)),
+                nom=_text(link).upper(),
+            )
+        )
+    return out
 
 
 def parse_lliga_jornades(html: str) -> list[LligaJornadaLink]:

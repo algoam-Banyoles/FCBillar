@@ -10,6 +10,7 @@ import pytest
 from fcbillar.scraper.parsers import (
     HistorialEntry,
     parse_home_current_rankings,
+    parse_lliga_divisions,
     parse_lliga_encontres,
     parse_lliga_grups,
     parse_lliga_jornades,
@@ -259,6 +260,23 @@ def test_parse_lliga_encontres_jornada_01(lliga_encontres_html: str) -> None:
     assert first.p_parcials_visitant == 3
     assert first.p_match_visitant == 0
     assert first.encontre_id == 10939
+
+
+@pytest.fixture
+def lliga_divisions_html() -> str:
+    return (FIXTURES / "lliga_div_36_tres_bandes.html").read_text(encoding="utf-8")
+
+
+def test_parse_lliga_divisions(lliga_divisions_html: str) -> None:
+    """La LLIGA TRES BANDES (36) té 5 divisions: HONOR + 1a a 4a."""
+    divs = parse_lliga_divisions(lliga_divisions_html)
+    assert len(divs) == 5
+    noms = {d.nom for d in divs}
+    assert noms == {"HONOR", "1A DIVISIÓ", "2A DIVISIÓ", "3A DIVISIÓ", "4A DIVISIÓ"}
+    assert all(d.lliga_id == 36 for d in divs)
+    # Validació puntual: HONOR té divisio_id=148.
+    honor = next(d for d in divs if d.nom == "HONOR")
+    assert honor.divisio_id == 148
 
 
 def test_parse_lliga_partides_encontre(lliga_partides_html: str) -> None:
