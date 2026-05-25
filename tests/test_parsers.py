@@ -9,6 +9,7 @@ import pytest
 
 from fcbillar.scraper.parsers import (
     HistorialEntry,
+    parse_clubs_listing,
     parse_home_current_rankings,
     parse_lliga_divisions,
     parse_lliga_encontres,
@@ -265,6 +266,26 @@ def test_parse_lliga_encontres_jornada_01(lliga_encontres_html: str) -> None:
 @pytest.fixture
 def lliga_divisions_html() -> str:
     return (FIXTURES / "lliga_div_36_tres_bandes.html").read_text(encoding="utf-8")
+
+
+@pytest.fixture
+def clubs_listing_html() -> str:
+    return (FIXTURES / "clubs_listing.html").read_text(encoding="utf-8")
+
+
+def test_parse_clubs_listing_extracts_all(clubs_listing_html: str) -> None:
+    clubs = parse_clubs_listing(clubs_listing_html)
+    # A la fixture (inspeccionada manualment) hi ha ~38 clubs.
+    assert len(clubs) >= 35
+    noms = {c.nom for c in clubs}
+    # Algun nom conegut hi ha de ser.
+    assert "C.B.SANTS" in noms
+    assert "C.B.MATARÓ" in noms
+    assert "S.B.F.MOLINS" in noms
+    # Camps de contacte parsejats.
+    mataro = next(c for c in clubs if c.nom == "C.B.MATARÓ")
+    assert mataro.telefon is not None and "937964557" in mataro.telefon
+    assert mataro.email == "cbillarmataro@gmail.com"
 
 
 def test_parse_lliga_divisions(lliga_divisions_html: str) -> None:

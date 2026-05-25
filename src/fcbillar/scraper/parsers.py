@@ -443,6 +443,53 @@ class LligaDivisio:
     nom: str
 
 
+@dataclass(frozen=True)
+class ClubOficial:
+    """Una fila del listing oficial de clubs (/ca/clubs/5/Federacio).
+
+    El portal NO exposa un id intern per al club, així doncs el nom és l'únic
+    identificador. Per al schema usem el nom com a `fcb_id`.
+    """
+
+    nom: str
+    telefon: str | None = None
+    email: str | None = None
+    direccio: str | None = None
+    web: str | None = None
+
+
+def parse_clubs_listing(html: str) -> list[ClubOficial]:
+    """Parseja /ca/clubs/5/Federacio → llista de clubs amb dades de contacte.
+
+    Estructura: <table> amb capçalera CLUB/TELÈFON/EMAIL/DIRECCIÓ/WEB.
+    """
+    soup = BeautifulSoup(html, "lxml")
+    section = soup.select_one("section.three.fourths.padded")
+    if section is None:
+        raise ValueError("Secció principal no trobada al listing de clubs")
+    table = section.find("table")
+    if table is None:
+        raise ValueError("Taula no trobada al listing de clubs")
+    out: list[ClubOficial] = []
+    for tr in table.find_all("tr"):
+        cells = tr.find_all("td")
+        if len(cells) < 4:
+            continue  # capçalera o filera incompleta
+        nom = _text(cells[0])
+        if not nom:
+            continue
+        out.append(
+            ClubOficial(
+                nom=nom,
+                telefon=_text(cells[1]) or None,
+                email=_text(cells[2]) or None,
+                direccio=_text(cells[3]) or None,
+                web=_text(cells[4]) if len(cells) >= 5 else None,
+            )
+        )
+    return out
+
+
 def parse_lliga_divisions(html: str) -> list[LligaDivisio]:
     """Parseja /ca/lligues/divisions/{lliga} → llista de divisions."""
     soup = BeautifulSoup(html, "lxml")

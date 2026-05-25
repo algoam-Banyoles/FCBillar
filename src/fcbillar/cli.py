@@ -24,6 +24,7 @@ from fcbillar.pipeline import (
     backfill_modalitat,
     discover_lliga,
     fetch_ranking_html,
+    import_clubs_oficials,
     ingest_lliga_grup,
     ingest_lliga_jornada,
     ingest_partides,
@@ -340,6 +341,15 @@ def discover_lliga_cmd(
                         console.print(
                             f"      [dim]{j.nom}[/] jornada_id={j.jornada_id} data={data_str}"
                         )
+
+
+@app.command("import-clubs")
+def import_clubs_cmd() -> None:
+    """Descarrega el listing oficial de clubs (/ca/clubs/5/Federacio) i els desa."""
+    settings = get_settings()
+    with ScraperClient(settings) as client:
+        result = import_clubs_oficials(client, settings=settings)
+    console.print(f"[green]OK {result.imported} clubs importats.[/]")
 
 
 if __name__ == "__main__":

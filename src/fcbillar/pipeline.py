@@ -21,6 +21,7 @@ from fcbillar.models import (
 )
 from fcbillar.scraper.client import ScraperClient
 from fcbillar.scraper.parsers import (
+    ClubOficial,
     HistorialEntry,
     HomeRankingsResult,
     LligaDivisio,
@@ -29,6 +30,7 @@ from fcbillar.scraper.parsers import (
     LligaJornadaLink,
     LligaPartidaRow,
     RawGameRow,
+    parse_clubs_listing,
     parse_home_current_rankings,
     parse_lliga_divisions,
     parse_lliga_encontres,
@@ -851,6 +853,36 @@ def ingest_lliga_jornada(
         encontres_failed=failed,
         total_games_upserted=total_up,
         total_games_skipped=total_skip,
+    )
+
+
+@dataclass
+class ImportClubsResult:
+    imported: int
+    list_of_names: list[str]
+
+
+def _clubs_listing_url(base_url: str) -> str:
+    return f"{base_url.rstrip('/')}/ca/clubs/5/Federacio"
+
+
+def import_clubs_oficials(
+    client: ScraperClient, *, settings: Settings | None = None
+) -> ImportClubsResult:
+    """Descarrega el listing oficial de clubs i els upsert a la BD.
+
+    El nom és l'únic identificador disponible (no hi ha id intern al portal),
+    així doncs s'usa com a `clubs.fcb_id`. Idempotent.
+    """
+    settings = settings or client.settings
+    html = client.fetch_html(_clubs_listing_url(settings.base_url), use_cache=False)
+    clubs = parse_clubs_listing(html)
+    conn = ensure_schema(settings.db_path)
+    repo = Repository(conn)
+    for c in clubs:
+        repo.upsert_club(Club(fcb_id=c.nom, nom=c.nom))
+    return ImportClubsResult(
+        imported=len(clubs), list_of_names=[c.nom for c in clubs]
     )
 
 
