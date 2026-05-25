@@ -22,6 +22,17 @@ CREATE TABLE IF NOT EXISTS players (
 CREATE INDEX IF NOT EXISTS ix_players_club ON players(club_id);
 CREATE INDEX IF NOT EXISTS ix_players_seguiment ON players(seguiment) WHERE seguiment = 1;
 
+-- Alias per a noms alternatius de clubs (v3). El portal usa convencions
+-- diferents segons la pàgina (p.ex. "C.B.SANTS" al listing oficial vs
+-- "C.B. SANTS" a la lliga); aquesta taula permet mapejar-los al mateix
+-- club canònic. La resolució (exact → normalitzat → alias) viu al repository.
+CREATE TABLE IF NOT EXISTS club_aliases (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    alias_nom   TEXT NOT NULL UNIQUE,
+    club_id     INTEGER NOT NULL REFERENCES clubs(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_club_aliases_club ON club_aliases(club_id);
+
 CREATE TABLE IF NOT EXISTS modalitats (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     codi_fcb    INTEGER NOT NULL UNIQUE,  -- id que apareix a la URL

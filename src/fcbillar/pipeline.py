@@ -584,11 +584,23 @@ def _derive_temporada(d: date) -> str:
 def _ensure_club_equip(
     repo: Repository, equip_nom: str
 ) -> tuple[str, str, int]:
-    """Crea/obté el club i l'equip a la BD. Retorna (club_fcb_id, lletra, equip_id)."""
+    """Crea/obté el club i l'equip a la BD. Retorna (club_fcb_id, lletra, equip_id).
+
+    Si ja existeix un club amb el mateix nom (matching exacte, normalitzat o
+    via alias), el reutilitzem; sinó en creem un de nou amb el nom tal com
+    apareix a la lliga.
+    """
     club_nom, lletra = _split_equip_nom(equip_nom)
-    # Usem el nom del club com a fcb_id (el portal no exposa un id intern de club).
-    club_fcb_id = club_nom
-    repo.upsert_club(Club(fcb_id=club_fcb_id, nom=club_nom))
+    existing_id = repo.resolve_club_id_by_nom(club_nom)
+    if existing_id is not None:
+        row = repo.conn.execute(
+            "SELECT fcb_id FROM clubs WHERE id = ?", (existing_id,)
+        ).fetchone()
+        club_fcb_id = row[0]
+    else:
+        # Creem un nou club amb el nom tal com surt a la lliga.
+        club_fcb_id = club_nom
+        repo.upsert_club(Club(fcb_id=club_fcb_id, nom=club_nom))
     equip_id = repo.upsert_equip(Equip(club_fcb_id=club_fcb_id, lletra=lletra))
     return club_fcb_id, lletra, equip_id
 
@@ -636,24 +648,29 @@ def ingest_lliga_encontre(
     repo = Repository(conn)
 
     # 1. Crear/obtenir clubs + equips i l'encontre.
-    _, _, local_equip_id = _ensure_club_equip(repo, encontre.equip_local)
-    _, _, visitant_equip_id = _ensure_club_equip(repo, encontre.equip_visitant)
+    # _ensure_club_equip resol el club via match exacte / normalitzat / alias,
+    # i retorna el club_fcb_id real (que pot diferir del nom variant que ve
+    # de la lliga). Usem aquest fcb_id resolt per construir l'Equip.
+    local_club_fcb, local_lletra, local_equip_id = _ensure_club_equip(
+        repo, encontre.equip_local
+    )
+    visitant_club_fcb, visitant_lletra, visitant_equip_id = _ensure_club_equip(
+        repo, encontre.equip_visitant
+    )
     temporada_nom: str | None = None
     if data is not None:
         temporada_nom = _derive_temporada(data)
     temporada_id: int | None = None
     if temporada_nom:
         temporada_id = repo.upsert_temporada(Temporada(nom=temporada_nom))
-    local_club, local_lletra = _split_equip_nom(encontre.equip_local)
-    visitant_club, visitant_lletra = _split_equip_nom(encontre.equip_visitant)
     encontre_full = EncontreLliga(
         lliga_id=encontre.lliga_id,
         divisio_id=encontre.divisio_id,
         grup_id=encontre.grup_id,
         jornada_id=encontre.jornada_id,
         encontre_id_extern=encontre.encontre_id,
-        equip_local=Equip(club_fcb_id=local_club, lletra=local_lletra),
-        equip_visitant=Equip(club_fcb_id=visitant_club, lletra=visitant_lletra),
+        equip_local=Equip(club_fcb_id=local_club_fcb, lletra=local_lletra),
+        equip_visitant=Equip(club_fcb_id=visitant_club_fcb, lletra=visitant_lletra),
         data=data,
         temporada_nom=temporada_nom,
         p_parcials_local=encontre.p_parcials_local,

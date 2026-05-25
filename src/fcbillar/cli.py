@@ -19,6 +19,9 @@ from fcbillar.auth import interactive_login
 from fcbillar.config import get_settings
 from fcbillar.db.migrations import ensure_schema
 from fcbillar.db.repository import Repository
+
+# Sub-app per a comandes de manteniment de clubs.
+clubs_app = typer.Typer(help="Gestió de clubs i aliases.", no_args_is_help=True)
 from fcbillar.pipeline import (
     backfill_historical,
     backfill_modalitat,
@@ -350,6 +353,46 @@ def import_clubs_cmd() -> None:
     with ScraperClient(settings) as client:
         result = import_clubs_oficials(client, settings=settings)
     console.print(f"[green]OK {result.imported} clubs importats.[/]")
+
+
+app.add_typer(clubs_app, name="clubs")
+
+
+@clubs_app.command("list")
+def clubs_list_cmd() -> None:
+    """Llista clubs registrats amb els seus aliases."""
+    settings = get_settings()
+    conn = ensure_schema(settings.db_path)
+    repo = Repository(conn)
+    rows = repo.list_clubs_with_aliases()
+    if not rows:
+        console.print("[yellow]Cap club a la BD. Prova `fcbillar import-clubs`.[/]")
+        return
+    table = Table(title=f"Clubs ({len(rows)})")
+    table.add_column("Club", style="cyan")
+    table.add_column("Aliases", style="dim")
+    for club_fcb_id, aliases in rows:
+        table.add_row(club_fcb_id, ", ".join(aliases) if aliases else "—")
+    console.print(table)
+
+
+@clubs_app.command("alias")
+def clubs_alias_cmd(
+    alias_nom: str = typer.Argument(..., help="Nom alternatiu (ex: 'SB FOMENT MOLINS')"),
+    club_fcb_id: str = typer.Argument(..., help="fcb_id del club canònic (ex: 'S.B.F.MOLINS')"),
+) -> None:
+    """Registra un alias per a un club. Útil per a noms variants entre pàgines."""
+    settings = get_settings()
+    conn = ensure_schema(settings.db_path)
+    repo = Repository(conn)
+    try:
+        repo.add_club_alias(alias_nom, club_fcb_id)
+    except ValueError as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(1) from e
+    console.print(
+        f"[green]OK alias '{alias_nom}' afegit al club '{club_fcb_id}'.[/]"
+    )
 
 
 if __name__ == "__main__":

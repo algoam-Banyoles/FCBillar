@@ -6,6 +6,8 @@ Versions:
 - 2: club per-partida — afegides taules temporades, equips, encontres_lliga;
      i columnes a games (equip1_id, equip2_id, encontre_lliga_id, temporada_id,
      arbitre, assistencia).
+- 3: unificació de noms de clubs — taula club_aliases per mapejar noms
+     alternatius a un mateix club canònic.
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def _read_schema_sql() -> str:
@@ -62,9 +64,11 @@ def ensure_schema(db_path: Path) -> sqlite3.Connection:
     if version >= SCHEMA_VERSION:
         return conn
 
-    # BD existent (v >= 1): aplicar migracions incrementals abans del executescript.
+    # BD existent: aplicar migracions incrementals abans del executescript.
     if 1 <= version < 2:
         _migrate_v1_to_v2(conn)
+    # v2 → v3 no necessita ALTER (només afegeix taula nova que crearà
+    # executescript via CREATE TABLE IF NOT EXISTS).
 
     # executescript és idempotent (CREATE TABLE IF NOT EXISTS, INSERT OR IGNORE,
     # CREATE INDEX IF NOT EXISTS) — segur per a BDs noves i ja migrades.

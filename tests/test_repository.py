@@ -265,6 +265,7 @@ def test_counts_returns_all_tables(repo: Repository) -> None:
         "temporades",
         "equips",
         "encontres_lliga",
+        "club_aliases",
     }
 
 
@@ -320,6 +321,69 @@ def test_upsert_player_with_placeholder_fcb_id_doesnt_self_fusion(repo: Reposito
     # Cridar upsert_player amb el placeholder directe no ha de duplicar res.
     repo.upsert_player(Player(fcb_id="name:X, Y", nom="X, Y"))
     assert repo.counts()["players"] == 1
+
+
+# ---------------- club aliases (v3) ----------------
+
+
+def test_normalize_club_name_strips_spaces_dots_accents() -> None:
+    assert Repository.normalize_club_name("C.B. SANTS") == "cbsants"
+    assert Repository.normalize_club_name("C.B.SANTS") == "cbsants"
+    assert Repository.normalize_club_name("c.b. sants") == "cbsants"
+    # Accents eliminats per a comparació
+    assert Repository.normalize_club_name("C.B.MATARÓ") == "cbmataro"
+    assert Repository.normalize_club_name("C.B. MATARÓ") == "cbmataro"
+
+
+def test_resolve_club_by_nom_exact_match(repo: Repository) -> None:
+    cid = repo.upsert_club(Club(fcb_id="C.B.SANTS", nom="C.B.SANTS"))
+    assert repo.resolve_club_id_by_nom("C.B.SANTS") == cid
+
+
+def test_resolve_club_by_nom_normalized_match(repo: Repository) -> None:
+    """Reconeix 'C.B. SANTS' com el mateix club que 'C.B.SANTS'."""
+    cid = repo.upsert_club(Club(fcb_id="C.B.SANTS", nom="C.B.SANTS"))
+    assert repo.resolve_club_id_by_nom("C.B. SANTS") == cid
+    assert repo.resolve_club_id_by_nom("c.b.sants") == cid
+
+
+def test_resolve_club_by_nom_alias_match(repo: Repository) -> None:
+    """Reconeix 'SB FOMENT MOLINS' via alias manual."""
+    cid = repo.upsert_club(Club(fcb_id="S.B.F.MOLINS", nom="S.B.F.MOLINS"))
+    repo.add_club_alias("SB FOMENT MOLINS", "S.B.F.MOLINS")
+    assert repo.resolve_club_id_by_nom("SB FOMENT MOLINS") == cid
+    # I la versió normalitzada de l'alias també.
+    assert repo.resolve_club_id_by_nom("sb foment molins") == cid
+
+
+def test_resolve_club_by_nom_returns_none_if_not_found(repo: Repository) -> None:
+    assert repo.resolve_club_id_by_nom("CLUB INEXISTENT") is None
+
+
+def test_add_club_alias_requires_existing_club(repo: Repository) -> None:
+    with pytest.raises(ValueError, match="Club NOEXIST no registrat"):
+        repo.add_club_alias("ALIAS", "NOEXIST")
+
+
+def test_add_club_alias_is_upsert(repo: Repository) -> None:
+    repo.upsert_club(Club(fcb_id="C.B.SANTS", nom="C.B.SANTS"))
+    repo.upsert_club(Club(fcb_id="C.B.MATARÓ", nom="C.B.MATARÓ"))
+    aid = repo.add_club_alias("ALIAS1", "C.B.SANTS")
+    # Re-add amb mateix alias però altre club → actualitza el target.
+    aid2 = repo.add_club_alias("ALIAS1", "C.B.MATARÓ")
+    assert aid == aid2
+    assert repo.counts()["club_aliases"] == 1
+
+
+def test_list_clubs_with_aliases(repo: Repository) -> None:
+    repo.upsert_club(Club(fcb_id="C.B.SANTS", nom="C.B.SANTS"))
+    repo.upsert_club(Club(fcb_id="C.B.MATARÓ", nom="C.B.MATARÓ"))
+    repo.add_club_alias("C.B. SANTS", "C.B.SANTS")
+    repo.add_club_alias("CBS", "C.B.SANTS")
+    rows = repo.list_clubs_with_aliases()
+    by_club = dict(rows)
+    assert sorted(by_club["C.B.SANTS"]) == ["C.B. SANTS", "CBS"]
+    assert by_club["C.B.MATARÓ"] == []
 
 
 def test_upsert_modalitat_idempotent(repo: Repository) -> None:

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
+import unicodedata
 from collections.abc import Iterable
 
 from fcbillar.models import (
@@ -43,6 +45,86 @@ class Repository:
             "SELECT id FROM clubs WHERE fcb_id = ?", (fcb_id,)
         ).fetchone()
         return row[0] if row else None
+
+    @staticmethod
+    def normalize_club_name(nom: str) -> str:
+        """Normalitza un nom de club per a comparació fuzzy.
+
+        Estratègia: minúscules + sense espais + sense accents + sense punts.
+        Permet matchejar 'C.B. SANTS' ↔ 'C.B.SANTS' ↔ 'c.b.sants'.
+        NO matcheja 'SB FOMENT MOLINS' ↔ 'S.B.F.MOLINS' (abreviacions
+        diferents); aquest cas requereix un alias manual.
+        """
+        # Treure accents
+        nfkd = unicodedata.normalize("NFKD", nom)
+        no_accents = "".join(c for c in nfkd if not unicodedata.combining(c))
+        # Minúscules + treure espais, punts, cometes
+        return re.sub(r"[\s.\"']+", "", no_accents.lower())
+
+    def resolve_club_id_by_nom(self, nom: str) -> int | None:
+        """Resol nom_brut → club.id, intentant 3 estratègies en ordre:
+
+        1. Match exacte de fcb_id (nom tal com el va donar el portal).
+        2. Match de nom normalitzat contra qualsevol nom de la taula clubs.
+        3. Match exacte contra la taula club_aliases.
+        Retorna None si cap funciona.
+        """
+        # 1. Exact
+        row = self.conn.execute(
+            "SELECT id FROM clubs WHERE fcb_id = ?", (nom,)
+        ).fetchone()
+        if row:
+            return row[0]
+        # 2. Normalitzat
+        norm = self.normalize_club_name(nom)
+        for cid, cnom in self.conn.execute("SELECT id, nom FROM clubs").fetchall():
+            if self.normalize_club_name(cnom) == norm:
+                return cid
+        # 3. Alias
+        row = self.conn.execute(
+            "SELECT club_id FROM club_aliases WHERE alias_nom = ?", (nom,)
+        ).fetchone()
+        if row:
+            return row[0]
+        # 3b. Alias normalitzat
+        for cid, alias in self.conn.execute(
+            "SELECT club_id, alias_nom FROM club_aliases"
+        ).fetchall():
+            if self.normalize_club_name(alias) == norm:
+                return cid
+        return None
+
+    def add_club_alias(self, alias_nom: str, club_fcb_id: str) -> int:
+        """Registra un alias manualment. El club ha d'existir."""
+        cid = self.get_club_id_by_fcb_id(club_fcb_id)
+        if cid is None:
+            raise ValueError(f"Club {club_fcb_id} no registrat")
+        cur = self.conn.execute(
+            """
+            INSERT INTO club_aliases (alias_nom, club_id) VALUES (?, ?)
+            ON CONFLICT(alias_nom) DO UPDATE SET club_id = excluded.club_id
+            RETURNING id
+            """,
+            (alias_nom, cid),
+        )
+        return cur.fetchone()[0]
+
+    def list_clubs_with_aliases(self) -> list[tuple[str, list[str]]]:
+        """Llista (club_fcb_id, [alias_nom, ...]) ordenat per nom de club."""
+        rows = self.conn.execute(
+            """
+            SELECT c.fcb_id, a.alias_nom
+            FROM clubs c
+            LEFT JOIN club_aliases a ON a.club_id = c.id
+            ORDER BY c.nom, a.alias_nom
+            """
+        ).fetchall()
+        result: dict[str, list[str]] = {}
+        for fcb_id, alias in rows:
+            result.setdefault(fcb_id, [])
+            if alias is not None:
+                result[fcb_id].append(alias)
+        return list(result.items())
 
     # ---------------------- players ----------------------
 
@@ -489,6 +571,7 @@ class Repository:
             "temporades",
             "equips",
             "encontres_lliga",
+            "club_aliases",
         ]:
             out[table] = self.conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         return out

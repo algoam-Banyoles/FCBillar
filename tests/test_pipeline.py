@@ -456,6 +456,49 @@ def test_ingest_lliga_encontre_enriches_existing_game(settings: StubSettings) ->
     assert row[5] is not None  # temporada derivada de 2025-09-27 = "2025-2026"
 
 
+# ---------------- unificació de noms de clubs ----------------
+
+
+def test_ingest_lliga_reuses_existing_club_via_normalization(
+    settings: StubSettings,
+) -> None:
+    """Si la BD ja té un club amb nom canònic (ex. 'C.B.SANTS' del listing oficial),
+    ingest_lliga reutilitza aquest club enlloc de crear-ne un de nou amb el
+    nom variant ('C.B. SANTS') de la lliga."""
+    from fcbillar.models import Club
+
+    fixtures = {
+        "https://www.fcbillar.cat/ca/lligues/partides/36/148/316/2593/10939": (
+            "lliga_3b_encontre_partides.html"
+        ),
+    }
+    client = StubScraperClient(settings, fixtures)
+
+    conn = ensure_schema(settings.db_path)
+    repo = Repository(conn)
+    # Pre-popular els clubs amb noms canònics del listing oficial.
+    repo.upsert_club(Club(fcb_id="C.B.SANTS", nom="C.B.SANTS"))
+    repo.upsert_club(Club(fcb_id="S.B.F.MOLINS", nom="S.B.F.MOLINS"))
+    # Afegim alias per al cas que la normalització no captura.
+    repo.add_club_alias("SB FOMENT MOLINS", "S.B.F.MOLINS")
+    assert repo.counts()["clubs"] == 2
+
+    encontre = LligaEncontre(
+        lliga_id=36, divisio_id=148, grup_id=316, jornada_id=2593, encontre_id=10939,
+        equip_local='C.B. SANTS "A"', p_parcials_local=5, p_match_local=3,
+        equip_visitant='SB FOMENT MOLINS "A"', p_parcials_visitant=3, p_match_visitant=0,
+    )
+    ingest_lliga_encontre(
+        client, encontre, modalitat_codi_fcb=1, data=date(2025, 9, 27),
+        create_missing_players=True, settings=settings,
+    )
+
+    # Cap club nou: els dos existeixen al listing i s'han reutilitzat.
+    counts = repo.counts()
+    assert counts["clubs"] == 2
+    assert counts["equips"] == 2  # C.B.SANTS A + S.B.F.MOLINS A
+
+
 # ---------------- create_missing_players ----------------
 
 
