@@ -633,6 +633,7 @@ def open_import_inscrits_cmd(
     (Art. VIII-IX) abans que la federació publiqui els grups. El resultat es
     desa a la BD d'opens (data/fcb_opens.db) i es veu a la pestanya Opens.
     """
+    import re as _re
     from datetime import datetime, timezone
     import json as _json
 
@@ -646,7 +647,23 @@ def open_import_inscrits_cmd(
         console.print("[red]No s'ha pogut llegir cap inscrit del PDF.[/]")
         raise typer.Exit(code=1)
 
-    proj = build_projection(inscrits, season=season)
+    # Resol cada nom d'inscrit → fcb_id del jugador ja existent a FCBillar, perquè
+    # el quadre projectat enllaci a la fitxa del jugador. El PDF de vegades omet
+    # l'espai després de la coma ("COGNOM,NOM"); provem també la variant normalitzada.
+    settings = get_settings()
+    fcb_conn = ensure_schema(settings.db_path)
+    repo = Repository(fcb_conn)
+
+    def _resolve_fcb_id(nom: str) -> str | None:
+        fid = repo.get_player_fcb_id_by_nom(nom)
+        if fid:
+            return fid
+        alt = _re.sub(r",\s*", ", ", nom)
+        return repo.get_player_fcb_id_by_nom(alt) if alt != nom else None
+
+    proj = build_projection(inscrits, season=season, resolve_fcb_id=_resolve_fcb_id)
+    fcb_conn.close()
+    n_linked = sum(1 for s in proj["seeds"] if s.get("fcb_id"))
     open_name = name or proj["name"]
     proj["name"] = open_name
 
@@ -671,7 +688,7 @@ def open_import_inscrits_cmd(
     struct = ", ".join(f"{k}={v}" for k, v in proj["structure"].items())
     console.print(
         f"[green]OK '{open_name}': {proj['num_inscriptions']} inscrits "
-        f"(estructura {struct}) → projecció #{proj_id} desada.[/]"
+        f"({n_linked} enllaçats a fitxa), estructura {struct} → projecció #{proj_id} desada.[/]"
     )
 
 

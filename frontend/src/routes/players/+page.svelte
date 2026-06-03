@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { page } from '$app/stores';
 	import { api } from '$lib/api';
 	import type { PlayerKpi } from '$lib/types';
 	import Card from '$lib/components/Card.svelte';
@@ -9,6 +10,14 @@
 	let q = '';
 
 	onMount(async () => {
+		// Pre-fill and run the search when arriving via /players?q=… (e.g. from a
+		// player whose name we couldn't resolve to a direct fcb_id).
+		const urlQ = $page.url.searchParams.get('q');
+		if (urlQ) {
+			q = urlQ;
+			await cercar();
+			return;
+		}
 		try {
 			players = await api<PlayerKpi[]>('/api/players?q=&limit=200');
 		} catch (e) {

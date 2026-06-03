@@ -15,6 +15,8 @@ payload (see db.save_projection) and returned verbatim by the API.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from .generator import GroupSlot, generate_tournament
 from .scraper.inscrits_pdf import InscritEntry, InscritsList
 
@@ -68,12 +70,25 @@ def build_projection(
     inscrits: InscritsList,
     *,
     season: str | None = None,
+    resolve_fcb_id: Callable[[str], str | None] | None = None,
 ) -> dict:
-    """Compute the full projected bracket payload from a parsed inscrits list."""
+    """Compute the full projected bracket payload from a parsed inscrits list.
+
+    ``resolve_fcb_id`` maps a player name to the FCBillar ``fcb_id`` of the
+    existing player profile (or None). When provided, every player reference in
+    the payload carries an ``fcb_id`` so the UI can link to that player's page.
+    """
     ordered = order_inscrits(list(inscrits.entries))
     n = len(ordered)
 
     tournament = generate_tournament(n)
+
+    # Resolve each distinct player name to an fcb_id once (cheap DB lookups).
+    fcb_ids: dict[str, str | None] = {}
+    if resolve_fcb_id is not None:
+        for e in ordered:
+            if e.player_name not in fcb_ids:
+                fcb_ids[e.player_name] = resolve_fcb_id(e.player_name)
 
     # position (1-indexed) -> seed dict, for resolving direct slots.
     def seed_dict(position: int) -> dict:
@@ -85,6 +100,7 @@ def build_projection(
             "ranking_position": e.seed_position,
             "mitjana": e.mitjana,
             "ranquing_estat": e.ranquing_estat,
+            "fcb_id": fcb_ids.get(e.player_name),
         }
 
     # Which phase each seed *enters*. Direct slots in a phase reveal this;

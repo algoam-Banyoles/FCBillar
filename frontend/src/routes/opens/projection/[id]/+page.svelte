@@ -1,7 +1,15 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { api } from '$lib/opens/api';
-	import type { ProjectionDetail, ProjectionSlot } from '$lib/opens/types';
+	import BackButton from '$lib/components/BackButton.svelte';
+	import type { ProjectionDetail, ProjectionSlot, ProjectionSeed } from '$lib/opens/types';
+
+	// Link a player to their existing FCBillar profile when resolved, otherwise
+	// to a name-prefilled player search as a graceful fallback.
+	function playerHref(p: { fcb_id?: string | null; player_name?: string }): string {
+		if (p.fcb_id) return `/players/${encodeURIComponent(p.fcb_id)}`;
+		return `/players?q=${encodeURIComponent(p.player_name ?? '')}`;
+	}
 
 	let proj = $state<ProjectionDetail | null>(null);
 	let error = $state<string | null>(null);
@@ -31,7 +39,7 @@
 	);
 </script>
 
-<a href="/opens" class="text-sm text-slate-500 hover:underline">← Opens</a>
+<BackButton fallback="/opens" />
 
 {#if loading}
 	<p class="mt-4 text-slate-500">Carregant…</p>
@@ -93,7 +101,7 @@
 										{hit(slot) ? 'bg-yellow-100 ring-1 ring-yellow-400' : ''}">
 										{#if slot.kind === 'player'}
 											<span class="truncate">
-												<span class="font-medium">{slot.player_name}</span>
+												<a href={playerHref(slot)} class="font-medium hover:underline">{slot.player_name}</a>
 												{#if slot.club}<span class="text-xs text-slate-400"> · {slot.club}</span>{/if}
 											</span>
 											<span class="shrink-0 font-mono text-xs text-slate-500">
@@ -123,7 +131,7 @@
 						<span class="w-6 shrink-0 text-center font-mono text-xs text-slate-400">{m.match}</span>
 						<div class="min-w-0 flex-1">
 							<div class="truncate {hit(m.a) ? 'rounded bg-yellow-100 px-1' : ''}">
-								<span class="font-medium">{m.a.player_name}</span>
+								<a href={playerHref(m.a)} class="font-medium hover:underline">{m.a.player_name}</a>
 								<span class="font-mono text-xs text-slate-400"> ({m.a.seed_order})</span>
 							</div>
 							<div class="my-0.5 text-xs text-slate-400">vs</div>
@@ -150,7 +158,9 @@
 					{#each proj.seeds as s}
 						<tr class={q && norm(s.player_name).includes(q) ? 'bg-yellow-100' : ''}>
 							<td class="text-right font-mono text-slate-500">{s.seed_order}</td>
-							<td class="font-medium">{s.player_name}</td>
+							<td class="font-medium">
+								<a href={playerHref(s)} class="hover:underline">{s.player_name}</a>
+							</td>
 							<td class="text-slate-600">{s.club ?? '—'}</td>
 							<td class="text-right font-mono">
 								{#if s.ranking_position}{s.ranking_position}{:else}

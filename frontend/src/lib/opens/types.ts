@@ -726,6 +726,7 @@ export interface ProjectionSeed {
 	mitjana: number;
 	ranquing_estat: string;
 	entry_phase: string;
+	fcb_id: string | null;
 }
 
 export interface ProjectionSlot {
@@ -737,6 +738,7 @@ export interface ProjectionSlot {
 	ranking_position?: number | null;
 	mitjana?: number;
 	ranquing_estat?: string;
+	fcb_id?: string | null;
 	placeholder?: string;
 	label?: string;
 	group?: string;
