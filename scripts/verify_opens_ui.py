@@ -83,7 +83,12 @@ def main() -> int:
         check("projection shows warnings banner", "sense posició al rànquing" in det)
         pg.get_by_role("button", name="Fase Final").click()
         pg.wait_for_timeout(500)
-        check("Fase Final tab shows group winners", "Guanyador Grup" in pg.inner_text("body"))
+        ff_body = pg.inner_text("body")
+        check("Fase Final tab shows group winners", "Guanyador Grup" in ff_body)
+        check(
+            "Fase Final bracket shows KO round columns",
+            all(r in ff_body for r in ["SETZENS", "VUITENS", "QUARTS", "SEMIFINALS", "FINAL"]),
+        )
         pg.get_by_role("button", name="Per club").click()
         pg.wait_for_timeout(400)
         check("Per club tab groups by club", "LLEIDA" in pg.inner_text("body"))

@@ -2,7 +2,14 @@
 	import { page } from '$app/stores';
 	import { api } from '$lib/opens/api';
 	import BackButton from '$lib/components/BackButton.svelte';
-	import type { ProjectionDetail, ProjectionSlot, ProjectionSeed } from '$lib/opens/types';
+	import Bracket from '$lib/components/Bracket.svelte';
+	import type {
+		ProjectionDetail,
+		ProjectionSlot,
+		ProjectionSeed,
+		LivePhase,
+		LiveMatch
+	} from '$lib/opens/types';
 
 	// Link a player to their existing FCBillar profile when resolved, otherwise
 	// to a name-prefilled player search as a graceful fallback.
@@ -68,6 +75,46 @@
 			linking = false;
 		}
 	}
+	// Projected Fase Final as a KO bracket for the <Bracket> component.
+	// Only the setzens are concrete: after each round winners are re-ranked by
+	// points then mitjana (Art. XIV), so later pairings depend on results and
+	// are shown as empty slots here.
+	function emptyKoPhase(label: string): LivePhase {
+		return {
+			label,
+			kind: 'ko',
+			url: '',
+			groups: [],
+			ko_matches: [],
+			is_active: false,
+			provisional_qualifiers: [],
+			provisional_matches: []
+		};
+	}
+	const koPhases = $derived.by<LivePhase[]>(() => {
+		if (!proj) return [];
+		const setzens: LiveMatch[] = proj.fase_final.setzens.map((m) => ({
+			player_a: m.a.player_name ?? '—',
+			player_b: m.b.label ?? '—',
+			punts_a: 0,
+			punts_b: 0,
+			caramboles_a: 0,
+			caramboles_b: 0,
+			serie_major_a: 0,
+			serie_major_b: 0,
+			entrades: null,
+			arbitre: null,
+			is_played: false
+		}));
+		return [
+			{ ...emptyKoPhase('SETZENS'), ko_matches: setzens },
+			emptyKoPhase('VUITENS'),
+			emptyKoPhase('QUARTS'),
+			emptyKoPhase('SEMIFINALS'),
+			emptyKoPhase('FINAL')
+		];
+	});
+
 	async function runCompare() {
 		if (!proj) return;
 		comparing = true;
@@ -180,6 +227,13 @@
 				Setzens de final: els {proj.fase_final.n_direct_seeds} millors caps de sèrie entren
 				directament i s'enfronten als guanyadors dels grups de Prèvies.
 			</p>
+			<Bracket koPhases={koPhases} highlightName={search} />
+			<div class="mb-4 mt-3 rounded-md bg-amber-50 px-3 py-1.5 text-sm text-amber-800">
+				Després de cada ronda els classificats es reordenen per punts de matx i mitjana (Art. XIV);
+				per això només els setzens estan concretats — de vuitens en endavant els emparellaments
+				es determinen amb els resultats.
+			</div>
+			<h3 class="mb-2 text-sm font-semibold text-slate-600">Detall dels setzens</h3>
 			<div class="grid gap-2 sm:grid-cols-2">
 				{#each proj.fase_final.setzens as m}
 					<div class="card flex items-center gap-3 p-3 text-sm">
