@@ -718,6 +718,116 @@ class Repository:
             ),
         )
 
+    # ---------------------- copa ----------------------
+    # La connexió és autocommit (isolation_level=None), així que cada execute
+    # persisteix sol. Idempotent via ON CONFLICT; les partides es reescriuen.
+
+    def upsert_copa_jornada(
+        self, edicio_id: int, jornada: int, ordre: int | None, nom: str | None
+    ) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO copa_jornades (edicio_id, jornada, ordre, nom)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(edicio_id, jornada) DO UPDATE SET
+                ordre = COALESCE(excluded.ordre, copa_jornades.ordre),
+                nom = COALESCE(excluded.nom, copa_jornades.nom)
+            """,
+            (edicio_id, jornada, ordre, nom),
+        )
+
+    def upsert_copa_encontre(
+        self,
+        *,
+        edicio_id: int,
+        jornada: int,
+        grup_id: int,
+        grup_nom: str | None,
+        enc_id_extern: int,
+        team_a_extern: int,
+        team_b_extern: int,
+        equip_local: str | None,
+        equip_visitant: str | None,
+        p_match_local: int | None,
+        p_match_visitant: int | None,
+    ) -> int:
+        cur = self.conn.execute(
+            """
+            INSERT INTO copa_encontres (
+                edicio_id, jornada, grup_id, grup_nom, enc_id_extern,
+                team_a_extern, team_b_extern, equip_local, equip_visitant,
+                p_match_local, p_match_visitant
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(edicio_id, jornada, grup_id, enc_id_extern, team_a_extern, team_b_extern)
+            DO UPDATE SET
+                grup_nom = COALESCE(excluded.grup_nom, copa_encontres.grup_nom),
+                equip_local = excluded.equip_local,
+                equip_visitant = excluded.equip_visitant,
+                p_match_local = excluded.p_match_local,
+                p_match_visitant = excluded.p_match_visitant
+            RETURNING id
+            """,
+            (
+                edicio_id, jornada, grup_id, grup_nom, enc_id_extern,
+                team_a_extern, team_b_extern, equip_local, equip_visitant,
+                p_match_local, p_match_visitant,
+            ),
+        )
+        return int(cur.fetchone()[0])
+
+    def upsert_copa_classificacio(
+        self,
+        *,
+        edicio_id: int,
+        jornada: int,
+        grup_id: int,
+        grup_nom: str | None,
+        posicio: int | None,
+        equip: str,
+        punts: int | None,
+        parcials: int | None,
+        mitjana: float | None,
+    ) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO copa_classificacio (
+                edicio_id, jornada, grup_id, grup_nom, posicio, equip,
+                punts, parcials, mitjana
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(edicio_id, jornada, grup_id, equip) DO UPDATE SET
+                grup_nom = COALESCE(excluded.grup_nom, copa_classificacio.grup_nom),
+                posicio = excluded.posicio,
+                punts = excluded.punts,
+                parcials = excluded.parcials,
+                mitjana = excluded.mitjana
+            """,
+            (edicio_id, jornada, grup_id, grup_nom, posicio, equip, punts, parcials, mitjana),
+        )
+
+    def replace_copa_partides(
+        self, encontre_copa_id: int, rows: list[tuple]
+    ) -> None:
+        """Reescriu les partides d'un encontre (delete + insert) — idempotent.
+
+        Cada tupla: (ordre, local_nom, local_caramboles, local_serie,
+        visitant_nom, visitant_caramboles, visitant_serie, entrades,
+        punts_local, punts_visitant).
+        """
+        self.conn.execute(
+            "DELETE FROM copa_partides WHERE encontre_copa_id = ?", (encontre_copa_id,)
+        )
+        if rows:
+            self.conn.executemany(
+                """
+                INSERT INTO copa_partides (
+                    encontre_copa_id, ordre, local_nom, local_caramboles, local_serie,
+                    visitant_nom, visitant_caramboles, visitant_serie, entrades,
+                    punts_local, punts_visitant
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [(encontre_copa_id, *r) for r in rows],
+            )
+
     # ---------------------- status ----------------------
 
     def counts(self) -> dict[str, int]:

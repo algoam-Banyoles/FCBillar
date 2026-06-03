@@ -37,6 +37,10 @@ from fcbillar.scraper.parsers import (
     RawGameRow,
     TorneigIndividual,
     parse_clubs_listing,
+    parse_copa_encontresgrup,
+    parse_copa_grups,
+    parse_copa_jornades,
+    parse_copa_partides,
     parse_home_current_rankings,
     parse_individuals_classificaciofinal,
     parse_individuals_divisions,
@@ -1328,6 +1332,106 @@ def ingest_individuals_temporada(
         torneigs_processed=processed,
         torneigs_failed=failed,
         total_participants=total_part,
+    )
+
+
+# --------------------------- ingest de copa catalana ---------------------------
+
+
+@dataclass
+class IngestCopaResult:
+    jornades: int
+    grups: int
+    encontres: int
+    partides: int
+
+
+def _copa_base(base_url: str) -> str:
+    return base_url.rstrip("/") + "/ca/copa"
+
+
+def ingest_copa_edicio(
+    client: ScraperClient,
+    edicio_id: int,
+    *,
+    jornada: int | None = None,
+    use_cache: bool = False,
+    settings: Settings | None = None,
+) -> IngestCopaResult:
+    """Ingest d'una edició de Copa: jornades → grups → encontres → partides.
+
+    Recorre faseGrups/{ed} per descobrir les jornades; per a cada jornada,
+    grups/{ed}/{jor}; per a cada grup, encontresGrup (classificació + encontres);
+    i per a cada encontre, partidesGrup (partides individuals). Idempotent.
+
+    `jornada` limita a una sola jornada (None = totes). `use_cache=False` força
+    dades fresques (el que vol l'actualització nocturna).
+    """
+    settings = settings or client.settings
+    conn = ensure_schema(settings.db_path)
+    repo = Repository(conn)
+    base = _copa_base(settings.base_url)
+
+    n_jor = n_grups = n_enc = n_part = 0
+
+    html = client.fetch_html(f"{base}/faseGrups/{edicio_id}", use_cache=use_cache)
+    jornades = parse_copa_jornades(html)
+    if jornada is not None:
+        jornades = [j for j in jornades if j.jornada == jornada]
+
+    for ordre, jor in enumerate(jornades, start=1):
+        repo.upsert_copa_jornada(jor.edicio_id, jor.jornada, ordre, jor.nom)
+        n_jor += 1
+
+        ghtml = client.fetch_html(
+            f"{base}/grups/{edicio_id}/{jor.jornada}", use_cache=use_cache
+        )
+        for g in parse_copa_grups(ghtml):
+            n_grups += 1
+            ehtml = client.fetch_html(
+                f"{base}/encontresGrup/{edicio_id}/{jor.jornada}/{g.grup_id}",
+                use_cache=use_cache,
+            )
+            data = parse_copa_encontresgrup(ehtml)
+            grup_nom = data.grup_nom or g.nom
+
+            for row in data.classificacio:
+                repo.upsert_copa_classificacio(
+                    edicio_id=edicio_id, jornada=jor.jornada, grup_id=g.grup_id,
+                    grup_nom=grup_nom, posicio=row.posicio, equip=row.equip,
+                    punts=row.punts, parcials=row.parcials, mitjana=row.mitjana,
+                )
+
+            for enc in data.encontres:
+                enc_id = repo.upsert_copa_encontre(
+                    edicio_id=edicio_id, jornada=jor.jornada, grup_id=g.grup_id,
+                    grup_nom=grup_nom, enc_id_extern=enc.enc_id_extern,
+                    team_a_extern=enc.team_a_extern, team_b_extern=enc.team_b_extern,
+                    equip_local=enc.equip_local, equip_visitant=enc.equip_visitant,
+                    p_match_local=enc.p_match_local, p_match_visitant=enc.p_match_visitant,
+                )
+                n_enc += 1
+                phtml = client.fetch_html(
+                    f"{base}/partidesGrup/{edicio_id}/{jor.jornada}/{g.grup_id}/"
+                    f"{enc.enc_id_extern}/{enc.team_a_extern}/{enc.team_b_extern}",
+                    use_cache=use_cache,
+                )
+                partides = parse_copa_partides(phtml)
+                repo.replace_copa_partides(
+                    enc_id,
+                    [
+                        (
+                            p.ordre, p.local_nom, p.local_caramboles, p.local_serie,
+                            p.visitant_nom, p.visitant_caramboles, p.visitant_serie,
+                            p.entrades, p.punts_local, p.punts_visitant,
+                        )
+                        for p in partides
+                    ],
+                )
+                n_part += len(partides)
+
+    return IngestCopaResult(
+        jornades=n_jor, grups=n_grups, encontres=n_enc, partides=n_part
     )
 
 

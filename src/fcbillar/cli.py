@@ -31,6 +31,7 @@ from fcbillar.pipeline import (
     find_club_players,
     import_clubs_oficials,
     import_temporada,
+    ingest_copa_edicio,
     ingest_individuals_temporada,
     ingest_lliga_grup,
     ingest_lliga_jornada,
@@ -615,6 +616,29 @@ def ingest_individuals_cmd(
         f"[green]OK individuals temporada {temporada}: "
         f"{result.torneigs_processed} torneigs ({result.torneigs_failed} fallats), "
         f"{result.total_participants} participants[/]"
+    )
+
+
+@app.command("ingest-copa")
+def ingest_copa_cmd(
+    edicio: int = typer.Argument(..., help="ID d'edició de la Copa (ex: 7)"),
+    jornada: int | None = typer.Option(
+        None, "--jornada", help="Limita a una jornada concreta (per defecte, totes)"
+    ),
+    cache: bool = typer.Option(
+        False, "--cache", help="Permet servir HTML de la cache (per defecte, fresc)"
+    ),
+) -> None:
+    """Ingest d'una edició de Copa: jornades, grups, encontres i partides."""
+    settings = get_settings()
+    with ScraperClient(settings) as client:
+        result = ingest_copa_edicio(
+            client, edicio, jornada=jornada, use_cache=cache, settings=settings
+        )
+    console.print(
+        f"[green]OK copa edició {edicio}: {result.jornades} jornades, "
+        f"{result.grups} grups, {result.encontres} encontres, "
+        f"{result.partides} partides.[/]"
     )
 
 

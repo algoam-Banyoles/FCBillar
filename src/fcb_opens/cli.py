@@ -21,8 +21,10 @@ from . import db
 from .diff import diff_rankings, pair_rankings
 from .lliga.persistence import save_league_snapshot
 from .lliga.scraper import incremental_refresh, scrape_competition
-from .snapshot_live import snapshot_all_live_opens
-from .supabase_sync import sync_all as supabase_sync_all
+# NOTE: snapshot_live / supabase_sync import the optional `supabase` package,
+# which isn't a dependency when fcb_opens is vendored inside FCBillar. They are
+# imported lazily inside the two commands that need them so the rest of the CLI
+# (scrape-*, stats…) runs without supabase installed.
 from .models import Player
 from .paths import resolve_db_path
 from .player_matching import build_matcher, normalize_for_matching
@@ -568,6 +570,8 @@ def cmd_supabase_sync(args: argparse.Namespace) -> int:
     Reads SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY from the environment.
     The service-role key bypasses RLS; never commit it.
     """
+    from .supabase_sync import sync_all as supabase_sync_all  # lazy: needs `supabase`
+
     if not args.db.exists():
         print(f"No database at {args.db}. Run scrape commands first.")
         return 1
@@ -611,6 +615,8 @@ def cmd_snapshot_live_opens(args: argparse.Namespace) -> int:
     the local SQLite — snapshots go straight to `fcb_opens.open_live_snapshots`.
     Use `--force` to bypass the FCB HTTP cache for the freshest data.
     """
+    from .snapshot_live import snapshot_all_live_opens  # lazy: needs `supabase`
+
     def _on_progress(level: str, message: str) -> None:
         prefix = {
             "phase": "[fase]",
