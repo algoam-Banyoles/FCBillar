@@ -48,13 +48,9 @@ class ScraperClient:
         self.close()
 
     @contextmanager
-    def interactive(self, headless: bool = False) -> Iterator[Page]:
-        """Obre un navegador per a login (captcha). No exigeix sessió prèvia.
-
-        `headless=True` el fa servir el login automàtic (OCR del captcha), que
-        no necessita finestra visible.
-        """
-        self._start(require_session=False, headless=headless)
+    def interactive(self) -> Iterator[Page]:
+        """Obre un navegador visible per a login manual (captcha). No exigeix sessió prèvia."""
+        self._start(require_session=False, headless=False)
         try:
             yield self.page
         finally:
