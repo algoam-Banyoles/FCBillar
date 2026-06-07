@@ -409,7 +409,7 @@
 
 		<!-- Partides recents -->
 		<ul class="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
-			{#each modGames.slice(0, shown) as g (g.id)}
+			{#each displayGames as g (g.id)}
 				{@const p = persp(g)}
 				<li class="flex items-center gap-3 border-b border-slate-100 px-3 py-2 last:border-0">
 					<span
@@ -427,7 +427,9 @@
 						{:else}
 							<div class="truncate text-sm leading-tight">{p.opp}</div>
 						{/if}
-						<div class="text-[11px] text-slate-400">{fmtDate(p.date)} · {p.comp ?? ''}</div>
+						<div class="text-[11px] text-slate-400">
+							{fmtDate(p.date)} · {p.comp ?? ''}{p.mySerie ? ` · sèrie ${p.mySerie}` : ''}
+						</div>
 					</div>
 					<div class="shrink-0 text-right">
 						<div class="font-mono text-sm tabular-nums">{p.myCar}–{p.oppCar}</div>
@@ -438,7 +440,7 @@
 				</li>
 			{/each}
 		</ul>
-		{#if modGames.length > shown}
+		{#if !serieFilter && modGames.length > shown}
 			<button
 				onclick={() => (shown += 60)}
 				class="mt-2 w-full rounded-lg bg-white py-2 text-sm font-medium text-slate-600 ring-1 ring-slate-200 active:bg-slate-50"

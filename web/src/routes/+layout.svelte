@@ -1,7 +1,13 @@
 <script lang="ts">
 	import '../app.css';
 	import { page } from '$app/stores';
+	import { afterNavigate } from '$app/navigation';
 	let { children } = $props();
+
+	// En canviar de pàgina, torna a dalt (i reseteja l'scroll/zoom de desplaçament).
+	afterNavigate(() => {
+		if (typeof window !== 'undefined') window.scrollTo({ top: 0, left: 0 });
+	});
 
 	const tabs = [
 		{ href: '/', label: 'Rànquings', match: (p: string) => p === '/' || p.startsWith('/jugador') },
