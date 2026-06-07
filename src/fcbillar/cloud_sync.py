@@ -418,3 +418,136 @@ def publish_opens(
     )
     conn.close()
     return counts
+
+
+def _rank_players(acc: dict) -> list[tuple]:
+    """Ordena per (punts desc, mitjana desc) i assigna posició. acc: key->stats."""
+    from collections import defaultdict
+
+    groups: dict = defaultdict(list)
+    for key, a in acc.items():
+        groups[key[:-1]].append((key[-1], a))
+    out = []
+    for gkey, lst in groups.items():
+        ranked = sorted(
+            lst,
+            key=lambda kv: (kv[1]["punts"], (kv[1]["car"] / kv[1]["ent"]) if kv[1]["ent"] else 0),
+            reverse=True,
+        )
+        for pos, (who, a) in enumerate(ranked, start=1):
+            out.append((gkey, pos, who, a))
+    return out
+
+
+def publish_lliga_player_rankings(
+    db_path: Path | None = None, on_progress: Progress | None = None
+) -> dict[str, int]:
+    """Rànquing individual de jugadors per grup de la lliga 3 bandes (punts + mitjana)."""
+    import json
+
+    prog: Progress = on_progress or (lambda level, msg: None)
+    db_path = db_path or get_settings().db_path
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    sb = get_client()
+
+    tr = conn.execute("SELECT id FROM temporades ORDER BY nom DESC LIMIT 1").fetchone()
+    season_id = tr["id"] if tr else None
+    players = {r["id"]: (r["fcb_id"], r["nom"]) for r in conn.execute("SELECT id, fcb_id, nom FROM players")}
+    equip_club = {
+        r["id"]: r["nom"]
+        for r in conn.execute("SELECT e.id, c.nom FROM equips e JOIN clubs c ON c.id = e.club_id")
+    }
+
+    acc: dict = {}
+    for r in conn.execute(
+        """
+        SELECT en.divisio_id AS div, en.grup_id AS grup,
+               g.player1_id AS p1, g.player2_id AS p2,
+               g.caramboles1 AS c1, g.caramboles2 AS c2, g.entrades AS e,
+               g.equip1_id AS eq1, g.equip2_id AS eq2, g.extras_json AS ex
+        FROM games g JOIN encontres_lliga en ON en.id = g.encontre_lliga_id
+        WHERE en.lliga_id = ? AND en.temporada_id = ? AND g.entrades > 0
+        """,
+        (LLIGA_3B_ID, season_id),
+    ):
+        try:
+            ex = json.loads(r["ex"] or "{}")
+        except (ValueError, TypeError):
+            ex = {}
+        for pid, car, pu, eq in (
+            (r["p1"], r["c1"], ex.get("punts1"), r["eq1"]),
+            (r["p2"], r["c2"], ex.get("punts2"), r["eq2"]),
+        ):
+            a = acc.setdefault((r["div"], r["grup"], pid), {"pj": 0, "punts": 0, "car": 0, "ent": 0, "eq": eq})
+            a["pj"] += 1
+            a["punts"] += pu or 0
+            a["car"] += car or 0
+            a["ent"] += r["e"] or 0
+            a["eq"] = eq
+
+    rows = []
+    for (div, grup), pos, pid, a in _rank_players(acc):
+        fcb, nom = players.get(pid, (None, "?"))
+        if not fcb:
+            continue
+        rows.append({
+            "lliga_id": LLIGA_3B_ID, "divisio_id": div, "grup_id": grup, "posicio": pos,
+            "player_fcb_id": fcb, "jugador": nom, "club": equip_club.get(a["eq"]),
+            "partides": a["pj"], "punts": a["punts"], "caramboles": a["car"], "entrades": a["ent"],
+            "mitjana": (a["car"] / a["ent"]) if a["ent"] else None,
+        })
+    n = _upsert(sb, "lliga_player_rankings", rows, "lliga_id,divisio_id,grup_id,player_fcb_id", prog)
+    conn.close()
+    return {"lliga_player_rankings": n}
+
+
+def publish_copa_player_rankings(
+    db_path: Path | None = None, on_progress: Progress | None = None
+) -> dict[str, int]:
+    """Rànquing individual de jugadors per grup de la Copa (punts + mitjana)."""
+    prog: Progress = on_progress or (lambda level, msg: None)
+    db_path = db_path or get_settings().db_path
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    sb = get_client()
+
+    ed_row = conn.execute("SELECT MAX(edicio_id) AS m FROM copa_classificacio").fetchone()
+    edicio = ed_row["m"] if ed_row else None
+    name_to_fcb = {r["nom"]: r["fcb_id"] for r in conn.execute("SELECT nom, fcb_id FROM players")}
+
+    acc: dict = {}
+    for r in conn.execute(
+        """
+        SELECT ce.jornada AS jornada, ce.grup_id AS grup,
+               cp.local_nom AS ln, cp.local_caramboles AS lc, cp.punts_local AS lp,
+               cp.visitant_nom AS vn, cp.visitant_caramboles AS vc, cp.punts_visitant AS vp,
+               cp.entrades AS e
+        FROM copa_partides cp JOIN copa_encontres ce ON ce.id = cp.encontre_copa_id
+        WHERE ce.edicio_id = ?
+        """,
+        (edicio,),
+    ):
+        if not r["e"]:
+            continue
+        for nom, car, pu in ((r["ln"], r["lc"], r["lp"]), (r["vn"], r["vc"], r["vp"])):
+            a = acc.setdefault((r["jornada"], r["grup"], nom), {"pj": 0, "punts": 0, "car": 0, "ent": 0})
+            a["pj"] += 1
+            a["punts"] += pu or 0
+            a["car"] += car or 0
+            a["ent"] += r["e"] or 0
+
+    rows = []
+    for (jornada, grup), pos, nom, a in _rank_players(acc):
+        fcb = name_to_fcb.get(nom)
+        if not fcb:
+            continue
+        rows.append({
+            "edicio_id": edicio, "jornada": jornada, "grup_id": grup, "posicio": pos,
+            "player_fcb_id": fcb, "jugador": nom, "club": None,
+            "partides": a["pj"], "punts": a["punts"], "caramboles": a["car"], "entrades": a["ent"],
+            "mitjana": (a["car"] / a["ent"]) if a["ent"] else None,
+        })
+    n = _upsert(sb, "copa_player_rankings", rows, "edicio_id,jornada,grup_id,player_fcb_id", prog)
+    conn.close()
+    return {"copa_player_rankings": n}

@@ -88,6 +88,19 @@ export interface CopaStanding {
 	mitjana: number | null;
 }
 
+export interface PlayerRankRow {
+	divisio_id?: number;
+	jornada?: number;
+	grup_id: number;
+	posicio: number | null;
+	player_fcb_id: string;
+	jugador: string | null;
+	club: string | null;
+	partides: number | null;
+	punts: number | null;
+	mitjana: number | null;
+}
+
 export interface Open {
 	open_id: number;
 	nom: string;

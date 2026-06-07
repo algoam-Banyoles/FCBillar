@@ -14,6 +14,18 @@
 	function norm(s: string): string {
 		return s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 	}
+
+	const MESOS = [
+		'gener', 'febrer', 'març', 'abril', 'maig', 'juny',
+		'juliol', 'agost', 'setembre', 'octubre', 'novembre', 'desembre'
+	];
+	function snapLabel(s: Snapshot): string {
+		if (s.mes_pub && s.any_pub) {
+			const m = MESOS[s.mes_pub - 1] ?? String(s.mes_pub);
+			return `${m.charAt(0).toUpperCase()}${m.slice(1)} ${s.any_pub}`;
+		}
+		return `Rànquing #${s.num_seq}`;
+	}
 	const filtered = $derived(
 		search.trim()
 			? rows.filter((r) => norm(r.jugador).includes(norm(search.trim())))
@@ -114,7 +126,7 @@
 		class="rounded-lg border-slate-300 bg-white py-2 pl-3 pr-8 text-sm shadow-sm"
 	>
 		{#each snapshots as s}
-			<option value={s.num_seq}>Rànquing #{s.num_seq}{s.mes_pub && s.any_pub ? ` · ${String(s.mes_pub).padStart(2, '0')}/${s.any_pub}` : ''}</option>
+			<option value={s.num_seq}>{snapLabel(s)}</option>
 		{/each}
 	</select>
 	<input

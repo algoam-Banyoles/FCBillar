@@ -4,12 +4,14 @@
 
 	let opens = $state<Open[]>([]);
 	let q = $state('');
+	let cat = $state<'opens' | 'camp'>('opens');
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
 	function norm(s: string): string {
 		return s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 	}
+	const isOpen = (nom: string) => nom.toUpperCase().includes('OPEN');
 
 	onMount(async () => {
 		try {
@@ -24,14 +26,28 @@
 	});
 
 	const filtered = $derived(
-		q.trim() ? opens.filter((o) => norm(o.nom).includes(norm(q.trim()))) : opens
+		opens
+			.filter((o) => (cat === 'opens' ? isOpen(o.nom) : !isOpen(o.nom)))
+			.filter((o) => (q.trim() ? norm(o.nom).includes(norm(q.trim())) : true))
 	);
 </script>
+
+<!-- Toggle Opens / Campionats de Catalunya -->
+<div class="mb-3 inline-flex rounded-lg bg-slate-100 p-0.5 text-sm">
+	<button
+		onclick={() => (cat = 'opens')}
+		class="rounded-md px-3 py-1 font-medium {cat === 'opens' ? 'bg-white shadow-sm' : 'text-slate-500'}"
+		>Opens</button>
+	<button
+		onclick={() => (cat = 'camp')}
+		class="rounded-md px-3 py-1 font-medium {cat === 'camp' ? 'bg-white shadow-sm' : 'text-slate-500'}"
+		>Camp. Catalunya</button>
+</div>
 
 <input
 	bind:value={q}
 	inputmode="search"
-	placeholder="Cerca open…"
+	placeholder="Cerca…"
 	class="mb-3 w-full rounded-lg border-slate-300 bg-white py-2.5 px-3 text-sm shadow-sm"
 />
 
@@ -52,5 +68,7 @@
 			</li>
 		{/each}
 	</ul>
-	<p class="px-1 py-3 text-center text-[11px] text-slate-400">{filtered.length} opens</p>
+	<p class="px-1 py-3 text-center text-[11px] text-slate-400">
+		{filtered.length} {cat === 'opens' ? 'opens' : 'campionats'}
+	</p>
 {/if}

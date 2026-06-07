@@ -126,28 +126,38 @@
 		return ps.length ? Math.min(...ps) : null;
 	});
 	const lastMitjana = $derived(rankHist.at(-1)?.mitjana ?? null);
+	const currentPos = $derived(rankHist.at(-1)?.posicio ?? null);
 
-	function spark(vals: (number | null)[], invert = false): string {
-		const n = vals.length;
+	const VBW = 300;
+	const VBH = 84;
+	const PAD = 10;
+	function chartData(vals: (number | null)[], invert = false) {
 		const valid = vals.filter((v): v is number => v != null);
-		if (valid.length < 2) return '';
-		let min = Math.min(...valid);
-		let max = Math.max(...valid);
+		if (valid.length < 2) return null;
+		const lo = Math.min(...valid);
+		const hi = Math.max(...valid);
+		let min = lo;
+		let max = hi;
 		if (min === max) {
-			min -= 1;
-			max += 1;
+			min -= 0.5;
+			max += 0.5;
 		}
-		return vals
-			.map((v, i) => {
-				if (v == null) return null;
-				const x = n > 1 ? (i / (n - 1)) * 300 : 0;
-				let t = (v - min) / (max - min);
-				if (invert) t = 1 - t;
-				return `${x.toFixed(1)},${(58 - t * 56).toFixed(1)}`;
-			})
-			.filter(Boolean)
-			.join(' ');
+		const n = vals.length;
+		const pts: { x: number; y: number; v: number }[] = [];
+		vals.forEach((v, i) => {
+			if (v == null) return;
+			const x = n > 1 ? PAD + (i / (n - 1)) * (VBW - 2 * PAD) : VBW / 2;
+			let t = (v - min) / (max - min);
+			if (invert) t = 1 - t;
+			pts.push({ x, y: VBH - PAD - t * (VBH - 2 * PAD), v });
+		});
+		const line = pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+		const base = (VBH - PAD).toFixed(1);
+		const area = `${pts[0].x.toFixed(1)},${base} ${line} ${pts.at(-1)!.x.toFixed(1)},${base}`;
+		return { line, area, lo, hi, last: pts.at(-1)!, n: valid.length };
 	}
+	const mitjanaChart = $derived(chartData(rankHist.map((r) => r.mitjana)));
+	const posChart = $derived(chartData(rankHist.map((r) => r.posicio), true));
 
 	function fmtDate(d: string | null): string {
 		if (!d) return '';
@@ -200,42 +210,74 @@
 		</p>
 
 		<!-- Evolució al rànquing -->
-		{#if rankHist.length >= 2}
-			<div class="mb-4 space-y-2">
+		{#if mitjanaChart}
+			<div class="mb-4 space-y-3">
+				<!-- Mitjana -->
 				<div class="rounded-xl bg-white p-3 ring-1 ring-slate-200">
-					<div class="mb-1 flex items-baseline justify-between">
-						<span class="text-xs font-medium text-slate-500">Evolució mitjana</span>
-						<span class="font-mono text-xs text-slate-400"
-							>{lastMitjana != null ? lastMitjana.toFixed(3) : '—'}</span>
+					<div class="mb-2 flex items-end justify-between">
+						<span class="text-xs font-semibold uppercase tracking-wide text-slate-400"
+							>Mitjana al rànquing</span>
+						<div class="flex gap-4 text-right">
+							<div>
+								<div class="font-mono text-base font-bold leading-none tabular-nums">
+									{lastMitjana != null ? lastMitjana.toFixed(3) : '—'}
+								</div>
+								<div class="text-[10px] text-slate-400">actual</div>
+							</div>
+							<div>
+								<div class="font-mono text-base font-bold leading-none tabular-nums text-emerald-600">
+									{mitjanaChart.hi.toFixed(3)}
+								</div>
+								<div class="text-[10px] text-slate-400">millor</div>
+							</div>
+						</div>
 					</div>
-					<svg viewBox="0 0 300 60" preserveAspectRatio="none" class="h-14 w-full">
+					<svg viewBox="0 0 {VBW} {VBH}" preserveAspectRatio="none" class="h-20 w-full">
+						<polyline points={mitjanaChart.area} fill="#0f172a" opacity="0.06" />
 						<polyline
-							points={spark(rankHist.map((r) => r.mitjana))}
+							points={mitjanaChart.line}
 							fill="none"
 							stroke="#0f172a"
 							stroke-width="1.5"
 							stroke-linejoin="round"
 							vector-effect="non-scaling-stroke" />
+						<circle cx={mitjanaChart.last.x} cy={mitjanaChart.last.y} r="3" fill="#0f172a" />
 					</svg>
 				</div>
+				<!-- Posició -->
 				<div class="rounded-xl bg-white p-3 ring-1 ring-slate-200">
-					<div class="mb-1 flex items-baseline justify-between">
-						<span class="text-xs font-medium text-slate-500"
-							>Evolució posició <span class="text-slate-300">(amunt = millor)</span></span>
-						<span class="font-mono text-xs text-slate-400">millor #{bestPos ?? '—'}</span>
+					<div class="mb-2 flex items-end justify-between">
+						<span class="text-xs font-semibold uppercase tracking-wide text-slate-400"
+							>Posició al rànquing</span>
+						<div class="flex gap-4 text-right">
+							<div>
+								<div class="font-mono text-base font-bold leading-none tabular-nums">
+									#{currentPos ?? '—'}
+								</div>
+								<div class="text-[10px] text-slate-400">actual</div>
+							</div>
+							<div>
+								<div class="font-mono text-base font-bold leading-none tabular-nums text-amber-500">
+									#{bestPos ?? '—'}
+								</div>
+								<div class="text-[10px] text-slate-400">millor</div>
+							</div>
+						</div>
 					</div>
-					<svg viewBox="0 0 300 60" preserveAspectRatio="none" class="h-14 w-full">
-						<polyline
-							points={spark(
-								rankHist.map((r) => r.posicio),
-								true
-							)}
-							fill="none"
-							stroke="#0f172a"
-							stroke-width="1.5"
-							stroke-linejoin="round"
-							vector-effect="non-scaling-stroke" />
-					</svg>
+					{#if posChart}
+						<svg viewBox="0 0 {VBW} {VBH}" preserveAspectRatio="none" class="h-20 w-full">
+							<polyline points={posChart.area} fill="#f59e0b" opacity="0.08" />
+							<polyline
+								points={posChart.line}
+								fill="none"
+								stroke="#f59e0b"
+								stroke-width="1.5"
+								stroke-linejoin="round"
+								vector-effect="non-scaling-stroke" />
+							<circle cx={posChart.last.x} cy={posChart.last.y} r="3" fill="#f59e0b" />
+						</svg>
+						<p class="mt-1 text-right text-[10px] text-slate-300">{posChart.n} rànquings · amunt = millor</p>
+					{/if}
 				</div>
 			</div>
 		{/if}

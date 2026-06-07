@@ -1,24 +1,34 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { supabase, type CopaGroup, type CopaStanding } from '$lib/supabase';
+	import {
+		supabase,
+		type CopaGroup,
+		type CopaStanding,
+		type PlayerRankRow
+	} from '$lib/supabase';
 
 	let groups = $state<CopaGroup[]>([]);
 	let standings = $state<CopaStanding[]>([]);
+	let pranks = $state<PlayerRankRow[]>([]);
 	let selJornada = $state<number | null>(null);
+	let mode = $state<'equips' | 'jugadors'>('equips');
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
 	onMount(async () => {
 		try {
-			const { data: g, error: eg } = await supabase.from('copa_groups').select('*');
+			const [{ data: g, error: eg }, { data: s, error: es }, { data: pr, error: ep }] =
+				await Promise.all([
+					supabase.from('copa_groups').select('*'),
+					supabase.from('copa_standings').select('*').order('posicio'),
+					supabase.from('copa_player_rankings').select('*').order('posicio')
+				]);
 			if (eg) throw eg;
-			const { data: s, error: es } = await supabase
-				.from('copa_standings')
-				.select('*')
-				.order('posicio');
 			if (es) throw es;
+			if (ep) throw ep;
 			groups = (g ?? []) as CopaGroup[];
 			standings = (s ?? []) as CopaStanding[];
+			pranks = (pr ?? []) as PlayerRankRow[];
 		} catch (e) {
 			error = (e as Error).message;
 		} finally {
@@ -51,6 +61,14 @@
 			.filter((s) => s.jornada === selJornada && s.grup_id === gid)
 			.sort((a, b) => (a.posicio ?? 99) - (b.posicio ?? 99));
 	}
+	function playerRows(gid: number): PlayerRankRow[] {
+		return pranks
+			.filter((s) => s.jornada === selJornada && s.grup_id === gid)
+			.sort((a, b) => (a.posicio ?? 99) - (b.posicio ?? 99));
+	}
+	function count(gid: number): number {
+		return mode === 'equips' ? rows(gid).length : playerRows(gid).length;
+	}
 
 	let collapsed = $state(new Set<number>());
 	function toggle(id: number) {
@@ -78,6 +96,18 @@
 		{/each}
 	</div>
 
+	<!-- Toggle Equips / Jugadors -->
+	<div class="mb-3 inline-flex rounded-lg bg-slate-100 p-0.5 text-sm">
+		<button
+			onclick={() => (mode = 'equips')}
+			class="rounded-md px-3 py-1 font-medium {mode === 'equips' ? 'bg-white shadow-sm' : 'text-slate-500'}"
+			>Equips</button>
+		<button
+			onclick={() => (mode = 'jugadors')}
+			class="rounded-md px-3 py-1 font-medium {mode === 'jugadors' ? 'bg-white shadow-sm' : 'text-slate-500'}"
+			>Jugadors</button>
+	</div>
+
 	{#each phaseGroups as g (g.grup_id)}
 		<section class="mb-4 overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
 			<button
@@ -85,31 +115,45 @@
 				class="flex w-full items-center gap-2 bg-slate-50 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
 			>
 				<span class="flex-1">{g.grup_nom ?? 'Grup'}</span>
-				<span class="font-normal normal-case text-slate-400">{rows(g.grup_id).length} equips</span>
+				<span class="font-normal normal-case text-slate-400">{count(g.grup_id)} {mode}</span>
 				<span class="text-slate-400 transition-transform {collapsed.has(g.grup_id) ? '' : 'rotate-90'}">›</span>
 			</button>
 			{#if !collapsed.has(g.grup_id)}
-			<div class="flex items-center gap-2 border-y border-slate-100 px-3 py-1.5 text-[10px] uppercase tracking-wide text-slate-400">
-				<span class="w-5 text-center">#</span>
-				<span class="flex-1">Equip</span>
-				<span class="w-12 text-right">Mitj.</span>
-				<span class="w-9 text-right">Pts</span>
-			</div>
-			<ul>
-				{#each rows(g.grup_id) as r (r.equip)}
-					<li class="flex items-center gap-2 border-b border-slate-100 px-3 py-2 last:border-0">
-						<span
-							class="w-5 shrink-0 text-center text-sm font-semibold tabular-nums {r.posicio === 1
-								? 'text-amber-500'
-								: 'text-slate-400'}">{r.posicio}</span>
-						<div class="min-w-0 flex-1 truncate text-sm font-medium leading-tight">{r.equip}</div>
-						<span class="w-12 shrink-0 text-right font-mono text-xs tabular-nums text-slate-400">
-							{r.mitjana != null ? r.mitjana.toFixed(3) : '—'}
-						</span>
-						<span class="w-9 shrink-0 text-right font-mono text-sm font-bold tabular-nums">{r.punts}</span>
-					</li>
-				{/each}
-			</ul>
+				{#if mode === 'equips'}
+					<div class="flex items-center gap-2 border-y border-slate-100 px-3 py-1.5 text-[10px] uppercase tracking-wide text-slate-400">
+						<span class="w-5 text-center">#</span>
+						<span class="flex-1">Equip</span>
+						<span class="w-12 text-right">Mitj.</span>
+						<span class="w-9 text-right">Pts</span>
+					</div>
+					<ul>
+						{#each rows(g.grup_id) as r (r.equip)}
+							<li class="flex items-center gap-2 border-b border-slate-100 px-3 py-2 last:border-0">
+								<span class="w-5 shrink-0 text-center text-sm font-semibold tabular-nums {r.posicio === 1 ? 'text-amber-500' : 'text-slate-400'}">{r.posicio}</span>
+								<div class="min-w-0 flex-1 truncate text-sm font-medium leading-tight">{r.equip}</div>
+								<span class="w-12 shrink-0 text-right font-mono text-xs tabular-nums text-slate-400">{r.mitjana != null ? r.mitjana.toFixed(3) : '—'}</span>
+								<span class="w-9 shrink-0 text-right font-mono text-sm font-bold tabular-nums">{r.punts}</span>
+							</li>
+						{/each}
+					</ul>
+				{:else}
+					<div class="flex items-center gap-2 border-y border-slate-100 px-3 py-1.5 text-[10px] uppercase tracking-wide text-slate-400">
+						<span class="w-5 text-center">#</span>
+						<span class="flex-1">Jugador</span>
+						<span class="w-12 text-right">Mitj.</span>
+						<span class="w-8 text-right">Pts</span>
+					</div>
+					<ul>
+						{#each playerRows(g.grup_id) as r (r.player_fcb_id)}
+							<li class="flex items-center gap-2 border-b border-slate-100 px-3 py-2 last:border-0">
+								<span class="w-5 shrink-0 text-center text-sm font-semibold tabular-nums {r.posicio === 1 ? 'text-amber-500' : 'text-slate-400'}">{r.posicio}</span>
+								<a href="/jugador/{r.player_fcb_id}" class="min-w-0 flex-1 truncate text-sm font-medium leading-tight active:underline">{r.jugador}</a>
+								<span class="w-12 shrink-0 text-right font-mono text-xs tabular-nums text-slate-500">{r.mitjana != null ? r.mitjana.toFixed(3) : '—'}</span>
+								<span class="w-8 shrink-0 text-right font-mono text-sm font-bold tabular-nums">{r.punts}</span>
+							</li>
+						{/each}
+					</ul>
+				{/if}
 			{/if}
 		</section>
 	{/each}
