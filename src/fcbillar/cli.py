@@ -626,7 +626,7 @@ def publish_cloud_cmd() -> None:
     FASE 1: rànquings. Cal SUPABASE_URL i SUPABASE_SERVICE_ROLE_KEY (al .env o a
     l'entorn). Idempotent: es pot reexecutar després de cada actualització.
     """
-    from fcbillar.cloud_sync import publish_games, publish_rankings
+    from fcbillar.cloud_sync import publish_games, publish_lliga, publish_rankings
 
     def _prog(level: str, msg: str) -> None:
         console.print(f"[dim]  {msg}[/]" if level == "ok" else f"[yellow]{msg}[/]")
@@ -634,6 +634,7 @@ def publish_cloud_cmd() -> None:
     try:
         counts = publish_rankings(on_progress=_prog)
         counts.update(publish_games(on_progress=_prog))
+        counts.update(publish_lliga(on_progress=_prog))
     except Exception as exc:  # noqa: BLE001
         console.print(f"[red]Error publicant al núvol: {exc}[/]")
         raise typer.Exit(code=1) from exc

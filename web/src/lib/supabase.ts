@@ -46,3 +46,25 @@ export interface GameRow {
 	entrades: number | null;
 	guanyador_fcb_id: string | null;
 }
+
+export interface LligaGroup {
+	lliga_id: number;
+	divisio_id: number;
+	grup_id: number;
+	divisio_nom: string | null;
+	grup_nom: string | null;
+}
+export interface StandingRow {
+	divisio_id: number;
+	grup_id: number;
+	posicio: number | null;
+	equip: string;
+	club_fcb_id: string | null;
+	pj: number | null;
+	g: number | null;
+	e: number | null;
+	p: number | null;
+	punts: number | null;
+	pf: number | null;
+	pc: number | null;
+}

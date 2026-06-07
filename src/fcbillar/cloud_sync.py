@@ -205,3 +205,104 @@ def publish_games(
     n = _upsert(sb, "games", games, "id", prog)
     conn.close()
     return {"games": n}
+
+
+# Lliga Catalana Tres Bandes = competició/portal lliga_id 36.
+LLIGA_3B_ID = 36
+
+
+def publish_lliga(
+    db_path: Path | None = None, on_progress: Progress | None = None
+) -> dict[str, int]:
+    """Calcula i puja les classificacions de la lliga 3 bandes (temporada actual)."""
+    prog: Progress = on_progress or (lambda level, msg: None)
+    db_path = db_path or get_settings().db_path
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    sb = get_client()
+
+    tr = conn.execute("SELECT id FROM temporades ORDER BY nom DESC LIMIT 1").fetchone()
+    season_id = tr["id"] if tr else None
+
+    noms = {
+        (r["divisio_id"], r["grup_id"]): r["nom"]
+        for r in conn.execute(
+            "SELECT divisio_id, grup_id, nom FROM lliga_noms WHERE lliga_id = ?",
+            (LLIGA_3B_ID,),
+        )
+    }
+    equips = {
+        r["id"]: (r["nom"], r["fcb_id"], r["lletra"])
+        for r in conn.execute(
+            "SELECT e.id, e.lletra, c.nom, c.fcb_id FROM equips e JOIN clubs c ON c.id = e.club_id"
+        )
+    }
+
+    groups = conn.execute(
+        """
+        SELECT DISTINCT divisio_id, grup_id FROM encontres_lliga
+        WHERE lliga_id = ? AND temporada_id = ? AND grup_id <> 0
+        """,
+        (LLIGA_3B_ID, season_id),
+    ).fetchall()
+
+    group_rows: list[dict] = []
+    standing_rows: list[dict] = []
+    for grp in groups:
+        div, gid = grp["divisio_id"], grp["grup_id"]
+        group_rows.append({
+            "lliga_id": LLIGA_3B_ID, "divisio_id": div, "grup_id": gid,
+            "divisio_nom": noms.get((div, 0)), "grup_nom": noms.get((div, gid)),
+        })
+        enc = conn.execute(
+            """
+            SELECT equip_local_id AS loc, equip_visitant_id AS vis,
+                   p_match_local AS pml, p_match_visitant AS pmv
+            FROM encontres_lliga
+            WHERE lliga_id = ? AND divisio_id = ? AND grup_id = ? AND temporada_id = ?
+            """,
+            (LLIGA_3B_ID, div, gid, season_id),
+        ).fetchall()
+        stats: dict[int, dict] = {}
+
+        def _s(eid):
+            return stats.setdefault(eid, {"pj": 0, "g": 0, "e": 0, "p": 0, "pf": 0, "pc": 0})
+
+        for r in enc:
+            pml, pmv = r["pml"], r["pmv"]
+            if pml is None or pmv is None:
+                continue
+            sl, sv = _s(r["loc"]), _s(r["vis"])
+            sl["pj"] += 1; sv["pj"] += 1
+            sl["pf"] += pml; sl["pc"] += pmv
+            sv["pf"] += pmv; sv["pc"] += pml
+            if pml > pmv:
+                sl["g"] += 1; sv["p"] += 1
+            elif pml < pmv:
+                sv["g"] += 1; sl["p"] += 1
+            else:
+                sl["e"] += 1; sv["e"] += 1
+
+        ranked = sorted(
+            stats.items(),
+            key=lambda kv: (3 * kv[1]["g"] + kv[1]["e"], kv[1]["pf"] - kv[1]["pc"]),
+            reverse=True,
+        )
+        for pos, (eid, s) in enumerate(ranked, start=1):
+            nom, fcb_id, lletra = equips.get(eid, ("?", None, ""))
+            standing_rows.append({
+                "lliga_id": LLIGA_3B_ID, "divisio_id": div, "grup_id": gid,
+                "posicio": pos, "equip": f"{nom} {lletra}".strip(), "club_fcb_id": fcb_id,
+                "pj": s["pj"], "g": s["g"], "e": s["e"], "p": s["p"],
+                "punts": 3 * s["g"] + s["e"], "pf": s["pf"], "pc": s["pc"],
+            })
+
+    counts = {}
+    counts["lliga_groups"] = _upsert(
+        sb, "lliga_groups", group_rows, "lliga_id,divisio_id,grup_id", prog
+    )
+    counts["lliga_standings"] = _upsert(
+        sb, "lliga_standings", standing_rows, "lliga_id,divisio_id,grup_id,equip", prog
+    )
+    conn.close()
+    return counts

@@ -1,14 +1,29 @@
 <script lang="ts">
 	import '../app.css';
+	import { page } from '$app/stores';
 	let { children } = $props();
+
+	const tabs = [
+		{ href: '/', label: 'Rànquings', match: (p: string) => p === '/' || p.startsWith('/jugador') },
+		{ href: '/lliga', label: 'Lliga', match: (p: string) => p.startsWith('/lliga') }
+	];
+	const path = $derived($page.url.pathname);
 </script>
 
 <div class="mx-auto flex min-h-full max-w-screen-sm flex-col">
 	<header class="sticky top-0 z-10 border-b border-slate-200 bg-white/90 backdrop-blur">
-		<div class="flex items-center gap-2 px-4 py-3">
+		<div class="flex items-center gap-2 px-4 pt-3">
 			<span class="text-base font-bold tracking-tight">FCBillar</span>
-			<span class="text-sm text-slate-400">· Rànquings</span>
 		</div>
+		<nav class="flex gap-1 px-3 pt-2">
+			{#each tabs as t}
+				<a
+					href={t.href}
+					class="-mb-px rounded-t-lg px-3 py-2 text-sm font-medium {t.match(path)
+						? 'border-b-2 border-slate-900 text-slate-900'
+						: 'text-slate-400'}">{t.label}</a>
+			{/each}
+		</nav>
 	</header>
 	<main class="flex-1 px-3 py-3">
 		{@render children()}
