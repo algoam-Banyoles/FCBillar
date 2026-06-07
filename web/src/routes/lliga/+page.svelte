@@ -51,6 +51,13 @@
 			.filter((s) => s.divisio_id === selDiv && s.grup_id === gid)
 			.sort((a, b) => (a.posicio ?? 99) - (b.posicio ?? 99));
 	}
+
+	let collapsed = $state(new Set<number>());
+	function toggle(id: number) {
+		const s = new Set(collapsed);
+		s.has(id) ? s.delete(id) : s.add(id);
+		collapsed = s;
+	}
 </script>
 
 {#if error}
@@ -73,10 +80,16 @@
 
 	{#each divGroups as g (g.grup_id)}
 		<section class="mb-4 overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
-			<header class="border-b border-slate-100 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-				{g.grup_nom ?? 'Grup'}
-			</header>
-			<div class="flex items-center gap-2 border-b border-slate-100 px-3 py-1.5 text-[10px] uppercase tracking-wide text-slate-400">
+			<button
+				onclick={() => toggle(g.grup_id)}
+				class="flex w-full items-center gap-2 bg-slate-50 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
+			>
+				<span class="flex-1">{g.grup_nom ?? 'Grup'}</span>
+				<span class="font-normal normal-case text-slate-400">{rows(g.grup_id).length} equips</span>
+				<span class="text-slate-400 transition-transform {collapsed.has(g.grup_id) ? '' : 'rotate-90'}">›</span>
+			</button>
+			{#if !collapsed.has(g.grup_id)}
+			<div class="flex items-center gap-2 border-y border-slate-100 px-3 py-1.5 text-[10px] uppercase tracking-wide text-slate-400">
 				<span class="w-5 text-center">#</span>
 				<span class="flex-1">Equip</span>
 				<span class="w-7 text-center">PJ</span>
@@ -98,6 +111,7 @@
 					</li>
 				{/each}
 			</ul>
+			{/if}
 		</section>
 	{/each}
 {/if}

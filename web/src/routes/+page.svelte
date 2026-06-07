@@ -114,7 +114,7 @@
 		class="rounded-lg border-slate-300 bg-white py-2 pl-3 pr-8 text-sm shadow-sm"
 	>
 		{#each snapshots as s}
-			<option value={s.num_seq}>Rànquing #{s.num_seq}</option>
+			<option value={s.num_seq}>Rànquing #{s.num_seq}{s.mes_pub && s.any_pub ? ` · ${String(s.mes_pub).padStart(2, '0')}/${s.any_pub}` : ''}</option>
 		{/each}
 	</select>
 	<input

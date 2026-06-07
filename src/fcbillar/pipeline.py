@@ -762,6 +762,27 @@ def ingest_lliga_encontre(
     )
 
 
+# Mapeig nom de modalitat (tal com surt a la pàgina de partides) → codi_fcb.
+# A les lligues multi-modalitat (4 modalitats / Catalana) cada partida d'un
+# encontre juga una modalitat diferent, així que NO es pot aplicar una sola
+# modalitat a tot l'encontre: cal llegir-la per partida.
+_MODALITAT_NOM_TO_CODI = {
+    "tres bandes": 1,
+    "3 bandes": 1,
+    "lliure": 2,
+    "quadre 47/2": 3,
+    "banda": 4,
+    "quadre 71/2": 6,
+}
+
+
+def _modalitat_codi_from_nom(nom: str | None, fallback: int) -> int:
+    """Converteix el text 'Modalitat' d'una partida a codi_fcb (fallback si desconegut)."""
+    if not nom:
+        return fallback
+    return _MODALITAT_NOM_TO_CODI.get(" ".join(nom.strip().lower().split()), fallback)
+
+
 def _build_game_from_lliga_row(
     row: LligaPartidaRow,
     *,
@@ -803,7 +824,7 @@ def _build_game_from_lliga_row(
     return Game(
         data_partida=data_partida,
         competicio_nom=competicio_nom,
-        modalitat_codi_fcb=modalitat_codi_fcb,
+        modalitat_codi_fcb=_modalitat_codi_from_nom(row.modalitat, modalitat_codi_fcb),
         player1_fcb_id=local_fcb,
         player2_fcb_id=visitant_fcb,
         caramboles1=row.local_caramboles,

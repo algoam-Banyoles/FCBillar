@@ -166,13 +166,20 @@
 								? 'text-emerald-600'
 								: 'text-red-500'}">{p.tie ? 'E' : p.won ? 'G' : 'P'}</span>
 					<div class="min-w-0 flex-1">
-						<div class="truncate text-sm leading-tight">{p.opp}</div>
+						{#if p.oppId}
+							<a
+								href="/jugador/{p.oppId}"
+								class="block truncate text-sm font-medium leading-tight underline-offset-2 active:underline"
+								>{p.opp}</a>
+						{:else}
+							<div class="truncate text-sm leading-tight">{p.opp}</div>
+						{/if}
 						<div class="text-[11px] text-slate-400">{fmtDate(p.date)} · {p.comp ?? ''}</div>
 					</div>
 					<div class="shrink-0 text-right">
 						<div class="font-mono text-sm tabular-nums">{p.myCar}–{p.oppCar}</div>
-						<div class="text-[11px] text-slate-400">
-							{p.ent ? (p.myCar / p.ent).toFixed(3) : '—'}
+						<div class="text-[11px] tabular-nums text-slate-400">
+							{p.ent ? `${(p.myCar / p.ent).toFixed(3)} · ${p.ent} ent.` : '—'}
 						</div>
 					</div>
 				</li>
