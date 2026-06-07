@@ -105,7 +105,7 @@
 	});
 
 	// Evolució al rànquing (per la modalitat seleccionada): mitjana i posició.
-	let rankHist = $state<{ posicio: number | null; mitjana: number | null }[]>([]);
+	let rankHist = $state<{ num_seq: number; posicio: number | null; mitjana: number | null }[]>([]);
 	$effect(() => {
 		const id = fcbId;
 		const mod = selMod;
@@ -119,8 +119,24 @@
 			.eq('player_fcb_id', id)
 			.eq('modalitat_codi', mod)
 			.order('num_seq', { ascending: true });
-		rankHist = (data ?? []).map((r) => ({ posicio: r.posicio, mitjana: r.mitjana_general }));
+		rankHist = (data ?? []).map((r) => ({
+			num_seq: r.num_seq,
+			posicio: r.posicio,
+			mitjana: r.mitjana_general
+		}));
 	}
+	// Marques de l'eix X (divisions) amb el número de rànquing de referència.
+	const xTicks = $derived.by(() => {
+		const n = rankHist.length;
+		if (n < 2) return [] as { x: number; label: string }[];
+		const k = Math.min(5, n);
+		const ticks: { x: number; label: string }[] = [];
+		for (let i = 0; i < k; i++) {
+			const idx = Math.round((i * (n - 1)) / (k - 1));
+			ticks.push({ x: PAD + (idx / (n - 1)) * (VBW - 2 * PAD), label: `#${rankHist[idx].num_seq}` });
+		}
+		return ticks;
+	});
 	const bestPos = $derived.by(() => {
 		const ps = rankHist.map((r) => r.posicio).filter((v): v is number => v != null);
 		return ps.length ? Math.min(...ps) : null;
@@ -233,6 +249,9 @@
 						</div>
 					</div>
 					<svg viewBox="0 0 {VBW} {VBH}" preserveAspectRatio="none" class="h-20 w-full">
+						{#each xTicks as t}
+							<line x1={t.x} y1="2" x2={t.x} y2={VBH - 2} stroke="#e2e8f0" stroke-width="1" vector-effect="non-scaling-stroke" />
+						{/each}
 						<polyline points={mitjanaChart.area} fill="#0f172a" opacity="0.06" />
 						<polyline
 							points={mitjanaChart.line}
@@ -243,6 +262,9 @@
 							vector-effect="non-scaling-stroke" />
 						<circle cx={mitjanaChart.last.x} cy={mitjanaChart.last.y} r="3" fill="#0f172a" />
 					</svg>
+					<div class="flex justify-between px-0.5 text-[9px] tabular-nums text-slate-300">
+						{#each xTicks as t}<span>{t.label}</span>{/each}
+					</div>
 				</div>
 				<!-- Posició -->
 				<div class="rounded-xl bg-white p-3 ring-1 ring-slate-200">
@@ -266,6 +288,9 @@
 					</div>
 					{#if posChart}
 						<svg viewBox="0 0 {VBW} {VBH}" preserveAspectRatio="none" class="h-20 w-full">
+							{#each xTicks as t}
+								<line x1={t.x} y1="2" x2={t.x} y2={VBH - 2} stroke="#fde68a" stroke-width="1" vector-effect="non-scaling-stroke" />
+							{/each}
 							<polyline points={posChart.area} fill="#f59e0b" opacity="0.08" />
 							<polyline
 								points={posChart.line}
@@ -276,6 +301,9 @@
 								vector-effect="non-scaling-stroke" />
 							<circle cx={posChart.last.x} cy={posChart.last.y} r="3" fill="#f59e0b" />
 						</svg>
+						<div class="flex justify-between px-0.5 text-[9px] tabular-nums text-slate-300">
+							{#each xTicks as t}<span>{t.label}</span>{/each}
+						</div>
 						<p class="mt-1 text-right text-[10px] text-slate-300">{posChart.n} rànquings · amunt = millor</p>
 					{/if}
 				</div>
