@@ -43,7 +43,9 @@
 {#if error}
 	<div class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>
 {:else}
-	<h1 class="mb-3 text-base font-bold leading-tight">{open?.nom ?? '…'}</h1>
+	<h1 class="mb-3 text-base font-bold leading-tight">
+		{open ? open.nom.replace(/\s*-\s*[ÚU]NICA\s*$/i, '').trim() : '…'}
+	</h1>
 
 	{#if loading}
 		<p class="py-6 text-center text-sm text-slate-400">Carregant…</p>

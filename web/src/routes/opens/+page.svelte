@@ -12,6 +12,7 @@
 		return s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 	}
 	const isOpen = (nom: string) => nom.toUpperCase().includes('OPEN');
+	const clean = (nom: string) => nom.replace(/\s*-\s*[ÚU]NICA\s*$/i, '').trim();
 
 	onMount(async () => {
 		try {
@@ -62,7 +63,7 @@
 		{#each filtered as o (o.open_id)}
 			<li class="border-b border-slate-100 last:border-0">
 				<a href="/opens/{o.open_id}" class="flex items-center gap-3 px-3 py-2.5 active:bg-slate-50">
-					<div class="min-w-0 flex-1 truncate text-sm font-medium leading-tight">{o.nom}</div>
+					<div class="min-w-0 flex-1 truncate text-sm font-medium leading-tight">{clean(o.nom)}</div>
 					<span class="shrink-0 text-slate-300">›</span>
 				</a>
 			</li>
