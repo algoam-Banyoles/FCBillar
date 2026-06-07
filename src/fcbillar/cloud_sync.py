@@ -155,3 +155,53 @@ def publish_rankings(
 
     conn.close()
     return counts
+
+
+def publish_games(
+    db_path: Path | None = None, on_progress: Progress | None = None
+) -> dict[str, int]:
+    """Puja les partides (per a la fitxa de jugador) a Supabase. FASE 2."""
+    prog: Progress = on_progress or (lambda level, msg: None)
+    db_path = db_path or get_settings().db_path
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    sb = get_client()
+
+    games = [
+        {
+            "id": r["id"],
+            "data_partida": r["data_partida"],
+            "modalitat_codi": r["modalitat_codi"],
+            "competicio": r["competicio"],
+            "player1_fcb_id": r["player1_fcb_id"],
+            "player1_nom": r["player1_nom"],
+            "caramboles1": r["caramboles1"],
+            "serie_max1": r["serie_max1"],
+            "player2_fcb_id": r["player2_fcb_id"],
+            "player2_nom": r["player2_nom"],
+            "caramboles2": r["caramboles2"],
+            "serie_max2": r["serie_max2"],
+            "entrades": r["entrades"],
+            "guanyador_fcb_id": r["guanyador_fcb_id"],
+        }
+        for r in conn.execute(
+            """
+            SELECT g.id, g.data_partida, m.codi_fcb AS modalitat_codi,
+                   comp.nom AS competicio,
+                   p1.fcb_id AS player1_fcb_id, p1.nom AS player1_nom,
+                   g.caramboles1, g.serie_max1,
+                   p2.fcb_id AS player2_fcb_id, p2.nom AS player2_nom,
+                   g.caramboles2, g.serie_max2,
+                   g.entrades, pw.fcb_id AS guanyador_fcb_id
+            FROM games g
+            JOIN modalitats m ON m.id = g.modalitat_id
+            LEFT JOIN competicions comp ON comp.id = g.competicio_id
+            JOIN players p1 ON p1.id = g.player1_id
+            JOIN players p2 ON p2.id = g.player2_id
+            LEFT JOIN players pw ON pw.id = g.guanyador_id
+            """
+        )
+    ]
+    n = _upsert(sb, "games", games, "id", prog)
+    conn.close()
+    return {"games": n}

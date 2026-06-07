@@ -23,8 +23,26 @@ export interface Snapshot {
 }
 export interface RankingRow {
 	posicio: number | null;
+	player_fcb_id: string;
 	jugador: string;
 	club: string | null;
 	mitjana_general: number | null;
 	partides: number | null;
+}
+
+export interface GameRow {
+	id: string;
+	data_partida: string | null;
+	modalitat_codi: number | null;
+	competicio: string | null;
+	player1_fcb_id: string | null;
+	player1_nom: string | null;
+	caramboles1: number | null;
+	serie_max1: number | null;
+	player2_fcb_id: string | null;
+	player2_nom: string | null;
+	caramboles2: number | null;
+	serie_max2: number | null;
+	entrades: number | null;
+	guanyador_fcb_id: string | null;
 }

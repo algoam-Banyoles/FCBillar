@@ -61,7 +61,7 @@
 		loading = true;
 		const { data, error: e } = await supabase
 			.from('ranking_full')
-			.select('posicio, jugador, club, mitjana_general, partides')
+			.select('posicio, player_fcb_id, jugador, club, mitjana_general, partides')
 			.eq('modalitat_codi', selMod)
 			.eq('num_seq', selSeq)
 			.order('posicio', { ascending: true });
@@ -131,18 +131,24 @@
 	<p class="px-1 py-6 text-center text-sm text-slate-400">Sense resultats.</p>
 {:else}
 	<ul class="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
-		{#each filtered as r (r.jugador + r.posicio)}
-			<li class="flex items-center gap-3 border-b border-slate-100 px-3 py-2.5 last:border-0">
-				<span
-					class="w-7 shrink-0 text-center text-sm font-semibold tabular-nums text-slate-400"
-				>{r.posicio ?? '—'}</span>
-				<div class="min-w-0 flex-1">
-					<div class="truncate text-sm font-medium leading-tight">{r.jugador}</div>
-					{#if r.club}<div class="truncate text-xs text-slate-400">{r.club}</div>{/if}
-				</div>
-				<span class="shrink-0 font-mono text-sm font-semibold tabular-nums">
-					{r.mitjana_general != null ? r.mitjana_general.toFixed(3) : '—'}
-				</span>
+		{#each filtered as r (r.player_fcb_id + '-' + r.posicio)}
+			<li class="border-b border-slate-100 last:border-0">
+				<a
+					href="/jugador/{r.player_fcb_id}"
+					class="flex items-center gap-3 px-3 py-2.5 active:bg-slate-50"
+				>
+					<span
+						class="w-7 shrink-0 text-center text-sm font-semibold tabular-nums text-slate-400"
+					>{r.posicio ?? '—'}</span>
+					<div class="min-w-0 flex-1">
+						<div class="truncate text-sm font-medium leading-tight">{r.jugador}</div>
+						{#if r.club}<div class="truncate text-xs text-slate-400">{r.club}</div>{/if}
+					</div>
+					<span class="shrink-0 font-mono text-sm font-semibold tabular-nums">
+						{r.mitjana_general != null ? r.mitjana_general.toFixed(3) : '—'}
+					</span>
+					<span class="shrink-0 text-slate-300">›</span>
+				</a>
 			</li>
 		{/each}
 	</ul>
