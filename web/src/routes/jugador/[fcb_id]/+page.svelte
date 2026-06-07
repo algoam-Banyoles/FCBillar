@@ -304,6 +304,7 @@
 					</button>
 				{/each}
 			</div>
+			<p class="mb-3 px-1 text-[11px] text-slate-400">{kpi.w} G · {kpi.l} P{kpi.t ? ` · ${kpi.t} E` : ''}</p>
 			<div class="mb-1 px-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Temporada actual</div>
 			<div class="mb-2 grid grid-cols-4 gap-2">
 				{#each [['Partides', seasonKpi.n], ['Mitjana', seasonKpi.mitjana.toFixed(3)], ['Sèrie màx', seasonKpi.sm], ['% vict.', seasonKpi.pct + '%']] as [label, val]}
@@ -314,7 +315,7 @@
 				{/each}
 			</div>
 			<p class="mb-2 px-1 text-[11px] text-slate-400">
-				Històric: {kpi.w} G · {kpi.l} P{kpi.t ? ` · ${kpi.t} E` : ''} · temporada des de l'1 d'agost.
+				Temporada des de l'1 d'agost.
 			</p>
 			{#if serieFilter}
 				<p class="mb-2 px-1 text-[11px] text-blue-600">Partides amb la sèrie màxima ({kpi.sm}). Torna a tocar «Sèrie màx» per desfer.</p>
