@@ -788,3 +788,57 @@ def publish_open_partides(
     n = _upsert(sb, "open_partides", rows, "open_id,fase_id,ordre", prog)
     conn.close()
     return {"open_partides": n}
+
+
+def publish_open_ranking(
+    db_path: Path | None = None, on_progress: Progress | None = None
+) -> dict[str, int]:
+    """Rànquing Català d'Opens 3 bandes (Art. XVIII: suma dels 5 millors opens)."""
+    from collections import defaultdict
+
+    from fcb_opens.reglament.puntuacio import points_for_position
+
+    prog: Progress = on_progress or (lambda level, msg: None)
+    db_path = db_path or get_settings().db_path
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    sb = get_client()
+
+    opens = [
+        r["id"]
+        for r in conn.execute(
+            "SELECT id FROM torneigs_individuals WHERE UPPER(nom) LIKE '%OPEN%' AND UPPER(nom) LIKE '%TRES BANDES%'"
+        )
+    ]
+    if not opens:
+        conn.close()
+        return {"open_ranking": 0}
+    ph = ",".join("?" * len(opens))
+    pts: dict = defaultdict(list)
+    noms: dict = {}
+    clubs: dict = {}
+    for r in conn.execute(
+        f"""
+        SELECT p.fcb_id, p.nom, tp.posicio, tp.club_text
+        FROM torneig_participants tp JOIN players p ON p.id = tp.player_id
+        WHERE tp.torneig_id IN ({ph}) AND tp.posicio IS NOT NULL
+        """,
+        opens,
+    ):
+        pts[r["fcb_id"]].append(points_for_position(r["posicio"]))
+        noms[r["fcb_id"]] = r["nom"]
+        clubs[r["fcb_id"]] = r["club_text"]
+
+    rows = [
+        {
+            "player_fcb_id": fcb, "jugador": noms[fcb], "club": clubs.get(fcb),
+            "opens_jugats": len(plist), "punts": sum(sorted(plist, reverse=True)[:5]),
+        }
+        for fcb, plist in pts.items()
+    ]
+    rows.sort(key=lambda x: -x["punts"])
+    for i, r in enumerate(rows, start=1):
+        r["posicio"] = i
+    n = _upsert(sb, "open_ranking", rows, "player_fcb_id", prog)
+    conn.close()
+    return {"open_ranking": n}
