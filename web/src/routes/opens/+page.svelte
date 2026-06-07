@@ -31,13 +31,22 @@
 
 	onMount(async () => {
 		try {
-			const [{ data, error: e }, { data: rk }] = await Promise.all([
-				supabase.from('opens').select('*').order('nom'),
-				supabase.from('open_ranking').select('*')
-			]);
+			const { data, error: e } = await supabase.from('opens').select('*').order('nom');
 			if (e) throw e;
 			opens = (data ?? []) as Open[];
-			ranking = rk ?? [];
+			// open_ranking pot superar el límit de 1000 files: paginem.
+			const all: any[] = [];
+			for (let from = 0; ; from += 1000) {
+				const { data: rk } = await supabase
+					.from('open_ranking')
+					.select('*')
+					.order('ronda', { ascending: false })
+					.range(from, from + 999);
+				if (!rk?.length) break;
+				all.push(...rk);
+				if (rk.length < 1000) break;
+			}
+			ranking = all;
 		} catch (e) {
 			error = (e as Error).message;
 		} finally {
