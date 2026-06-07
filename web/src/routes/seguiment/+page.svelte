@@ -239,6 +239,23 @@
 	{:else}
 		{#if hasHist}
 			<div class="mb-3 space-y-3">
+				{#if selSeq != null}
+					<div class="rounded-lg bg-slate-900 px-3 py-2 text-xs text-white">
+						<div class="mb-1 font-semibold">{dateFromSeq(selSeq)}</div>
+						<div class="flex flex-wrap gap-x-3 gap-y-1">
+							{#each series as s}
+								{@const m = valAt(s, selSeq, (p) => p.mitjana)}
+								{@const po = valAt(s, selSeq, (p) => p.posicio)}
+								{#if m != null || po != null}
+									<span class="flex items-center gap-1">
+										<span class="h-2 w-2 rounded-full" style:background-color={s.color}></span>
+										{s.nom.split(',')[0]}: <span class="font-mono font-bold">{m != null ? m.toFixed(3) : '—'}</span> · #{po ?? '—'}
+									</span>
+								{/if}
+							{/each}
+						</div>
+					</div>
+				{/if}
 				{#each [['Evolució mitjana', false, (p: Pt) => p.mitjana] as const, ['Evolució posició (amunt=millor)', true, (p: Pt) => p.posicio] as const] as [title, inv, getter]}
 					{@const vr = rng(getter)}
 					{@const yTop = inv ? vr[0] : vr[1]}
@@ -250,7 +267,7 @@
 								<span>{inv ? '#' + Math.round(yTop) : yTop.toFixed(2)}</span>
 								<span>{inv ? '#' + Math.round(yBot) : yBot.toFixed(2)}</span>
 							</div>
-							<svg viewBox="0 0 {VBW} {VBH}" preserveAspectRatio="none" class="h-24 flex-1">
+							<svg viewBox="0 0 {VBW} {VBH}" preserveAspectRatio="none" onclick={pickSeq} role="presentation" class="h-24 flex-1 cursor-pointer">
 								{#each [0, 0.25, 0.5, 0.75, 1] as f}
 									<line x1="0" y1={PAD + f * (VBH - 2 * PAD)} x2={VBW} y2={PAD + f * (VBH - 2 * PAD)} stroke="#eef2f7" stroke-width="1" vector-effect="non-scaling-stroke" />
 								{/each}
@@ -260,7 +277,7 @@
 							</svg>
 						</div>
 						<div class="flex justify-between pl-10 text-[9px] tabular-nums text-slate-400">
-							<span>#{seqRange[0]}</span><span>#{seqRange[1]}</span>
+							{#each xTicksSeg as seq}<span>{dateShort(seq)}</span>{/each}
 						</div>
 					</div>
 				{/each}
