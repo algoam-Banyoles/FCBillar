@@ -306,3 +306,64 @@ def publish_lliga(
     )
     conn.close()
     return counts
+
+
+def publish_copa(
+    db_path: Path | None = None, on_progress: Progress | None = None
+) -> dict[str, int]:
+    """Puja les classificacions de la Copa (edició actual) a Supabase. FASE 4."""
+    prog: Progress = on_progress or (lambda level, msg: None)
+    db_path = db_path or get_settings().db_path
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    sb = get_client()
+
+    ed_row = conn.execute("SELECT MAX(edicio_id) AS m FROM copa_classificacio").fetchone()
+    edicio = ed_row["m"] if ed_row else None
+
+    jornades = {
+        r["jornada"]: (r["nom"], r["ordre"])
+        for r in conn.execute(
+            "SELECT jornada, nom, ordre FROM copa_jornades WHERE edicio_id = ?", (edicio,)
+        )
+    }
+
+    group_rows = [
+        {
+            "edicio_id": edicio, "jornada": r["jornada"], "grup_id": r["grup_id"],
+            "grup_nom": r["grup_nom"],
+            "jornada_nom": jornades.get(r["jornada"], (None, None))[0],
+            "ordre": jornades.get(r["jornada"], (None, None))[1],
+        }
+        for r in conn.execute(
+            """
+            SELECT DISTINCT jornada, grup_id, grup_nom FROM copa_classificacio
+            WHERE edicio_id = ?
+            """,
+            (edicio,),
+        )
+    ]
+    standing_rows = [
+        {
+            "edicio_id": edicio, "jornada": r["jornada"], "grup_id": r["grup_id"],
+            "posicio": r["posicio"], "equip": r["equip"],
+            "punts": r["punts"], "parcials": r["parcials"], "mitjana": r["mitjana"],
+        }
+        for r in conn.execute(
+            """
+            SELECT jornada, grup_id, posicio, equip, punts, parcials, mitjana
+            FROM copa_classificacio WHERE edicio_id = ?
+            """,
+            (edicio,),
+        )
+    ]
+
+    counts = {}
+    counts["copa_groups"] = _upsert(
+        sb, "copa_groups", group_rows, "edicio_id,jornada,grup_id", prog
+    )
+    counts["copa_standings"] = _upsert(
+        sb, "copa_standings", standing_rows, "edicio_id,jornada,grup_id,equip", prog
+    )
+    conn.close()
+    return counts

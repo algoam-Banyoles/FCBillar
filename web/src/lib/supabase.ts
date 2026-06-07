@@ -68,3 +68,22 @@ export interface StandingRow {
 	pf: number | null;
 	pc: number | null;
 }
+
+export interface CopaGroup {
+	edicio_id: number;
+	jornada: number;
+	grup_id: number;
+	grup_nom: string | null;
+	jornada_nom: string | null;
+	ordre: number | null;
+}
+export interface CopaStanding {
+	edicio_id: number;
+	jornada: number;
+	grup_id: number;
+	posicio: number | null;
+	equip: string;
+	punts: number | null;
+	parcials: number | null;
+	mitjana: number | null;
+}

@@ -5,7 +5,8 @@
 
 	const tabs = [
 		{ href: '/', label: 'Rànquings', match: (p: string) => p === '/' || p.startsWith('/jugador') },
-		{ href: '/lliga', label: 'Lliga', match: (p: string) => p.startsWith('/lliga') }
+		{ href: '/lliga', label: 'Lliga', match: (p: string) => p.startsWith('/lliga') },
+		{ href: '/copa', label: 'Copa', match: (p: string) => p.startsWith('/copa') }
 	];
 	const path = $derived($page.url.pathname);
 </script>
