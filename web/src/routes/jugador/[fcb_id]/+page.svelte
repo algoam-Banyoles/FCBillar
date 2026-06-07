@@ -276,7 +276,8 @@
 		<p class="py-6 text-center text-sm text-slate-400">Carregant…</p>
 	{:else}
 		<!-- KPIs -->
-		<div class="mb-1 grid grid-cols-4 gap-2">
+			<div class="mb-1 px-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Històric</div>
+			<div class="mb-3 grid grid-cols-4 gap-2">
 				{#each [['Partides', kpi.n, ''], ['Mitjana', kpi.mitjana.toFixed(3), ''], ['Sèrie màx', kpi.sm, 'sm'], ['% vict.', kpi.pct + '%', '']] as [label, val, key]}
 					<button onclick={() => { if (key === 'sm') serieFilter = !serieFilter; }} class="rounded-xl bg-white px-2 py-2.5 text-center ring-1 {key === 'sm' && serieFilter ? 'ring-2 ring-blue-500' : 'ring-slate-200'}">
 						<div class="font-mono text-base font-bold tabular-nums">{val}</div>
@@ -284,16 +285,17 @@
 					</button>
 				{/each}
 			</div>
-			<div class="mb-1 grid grid-cols-4 gap-2">
+			<div class="mb-1 px-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Temporada actual</div>
+			<div class="mb-2 grid grid-cols-4 gap-2">
 				{#each [['Partides', seasonKpi.n], ['Mitjana', seasonKpi.mitjana.toFixed(3)], ['Sèrie màx', seasonKpi.sm], ['% vict.', seasonKpi.pct + '%']] as [label, val]}
-					<div class="rounded-lg bg-slate-50 px-2 py-1.5 text-center ring-1 ring-slate-200">
-						<div class="font-mono text-sm font-bold tabular-nums">{val}</div>
-						<div class="text-[9px] uppercase tracking-wide text-slate-400">{label}</div>
+					<div class="rounded-xl bg-white px-2 py-2.5 text-center ring-1 ring-slate-200">
+						<div class="font-mono text-base font-bold tabular-nums">{val}</div>
+						<div class="text-[10px] uppercase tracking-wide text-slate-400">{label}</div>
 					</div>
 				{/each}
 			</div>
-			<p class="mb-2 px-1 text-[10px] text-slate-400">
-				Fila gris = temporada actual (des de l'1/8) · {kpi.w} G · {kpi.l} P{kpi.t ? ` · ${kpi.t} E` : ''}
+			<p class="mb-2 px-1 text-[11px] text-slate-400">
+				Històric: {kpi.w} G · {kpi.l} P{kpi.t ? ` · ${kpi.t} E` : ''} · temporada des de l'1 d'agost.
 			</p>
 			{#if serieFilter}
 				<p class="mb-2 px-1 text-[11px] text-blue-600">Partides amb la sèrie màxima ({kpi.sm}). Torna a tocar «Sèrie màx» per desfer.</p>
