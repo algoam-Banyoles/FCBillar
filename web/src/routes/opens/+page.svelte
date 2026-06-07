@@ -77,6 +77,41 @@
 	<div class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>
 {:else if loading}
 	<p class="py-6 text-center text-sm text-slate-400">Carregant…</p>
+{:else if cat === 'ranking'}
+	{#if rondes.length === 0}
+		<p class="py-6 text-center text-sm text-slate-400">Sense rànquing d'opens.</p>
+	{:else}
+		<div class="mb-3 flex items-center justify-between gap-2 rounded-lg bg-slate-900 px-2 py-2 text-white">
+			<button onclick={() => stepRonda(-1)} class="rounded px-3 py-1 text-lg active:bg-slate-700" aria-label="anterior">‹</button>
+			<div class="min-w-0 text-center">
+				<div class="truncate text-xs font-semibold">{rondaInfo?.ronda_nom ?? ''}</div>
+				<div class="text-[10px] text-slate-300">{rondaInfo?.ronda_data ?? ''} · ronda {ronda}/{rondes.length}</div>
+			</div>
+			<button onclick={() => stepRonda(1)} class="rounded px-3 py-1 text-lg active:bg-slate-700" aria-label="següent">›</button>
+		</div>
+		<div class="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
+			<div class="flex items-center gap-2 border-b border-slate-100 px-3 py-1.5 text-[10px] uppercase tracking-wide text-slate-400">
+				<span class="w-6 text-center">#</span>
+				<span class="flex-1">Jugador</span>
+				<span class="w-7 text-center">Op.</span>
+				<span class="w-10 text-right">Punts</span>
+			</div>
+			<ul>
+				{#each rondaRows.filter((r) => !q.trim() || norm(r.jugador ?? '').includes(norm(q.trim()))) as r (r.player_fcb_id)}
+					<li class="flex items-center gap-2 border-b border-slate-100 px-3 py-2 last:border-0">
+						<span class="w-6 shrink-0 text-center text-sm font-semibold tabular-nums {r.posicio === 1 ? 'text-amber-500' : 'text-slate-400'}">{r.posicio}</span>
+						<div class="min-w-0 flex-1">
+							<a href="/jugador/{r.player_fcb_id}" class="block truncate text-sm font-medium leading-tight active:underline">{r.jugador}</a>
+							{#if r.club}<div class="truncate text-[11px] text-slate-400">{r.club}</div>{/if}
+						</div>
+						<span class="w-7 shrink-0 text-center text-xs tabular-nums text-slate-500">{r.opens_jugats}</span>
+						<span class="w-10 shrink-0 text-right font-mono text-sm font-bold tabular-nums">{r.punts}</span>
+					</li>
+				{/each}
+			</ul>
+		</div>
+		<p class="px-1 py-2 text-center text-[10px] text-slate-400">Rànquing Català d'Opens 3 Bandes · suma dels 5 darrers opens (Art. XVIII).</p>
+	{/if}
 {:else if filtered.length === 0}
 	<p class="py-6 text-center text-sm text-slate-400">Cap open.</p>
 {:else}
