@@ -13,7 +13,7 @@
 		{ href: '/', label: 'Rànquings', match: (p: string) => p === '/' || p.startsWith('/jugador') },
 		{ href: '/lliga', label: 'Lliga', match: (p: string) => p.startsWith('/lliga') },
 		{ href: '/copa', label: 'Copa', match: (p: string) => p.startsWith('/copa') },
-		{ href: '/opens', label: 'Individual', match: (p: string) => p.startsWith('/opens') },
+		{ href: '/opens', label: 'Opens', match: (p: string) => p.startsWith('/opens') },
 		{ href: '/cerca', label: 'Cerca', match: (p: string) => p.startsWith('/cerca') },
 		{ href: '/seguiment', label: '★ Seguits', match: (p: string) => p.startsWith('/seguiment') }
 	];
