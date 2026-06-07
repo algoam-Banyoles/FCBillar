@@ -695,3 +695,40 @@ def publish_copa_encontres(
     counts["copa_partides"] = _upsert(sb, "copa_partides", part_rows, "encontre_id,ordre", prog)
     conn.close()
     return counts
+
+
+def publish_open_partides(
+    db_path: Path | None = None, on_progress: Progress | None = None
+) -> dict[str, int]:
+    """Puja les partides (eliminatòries) dels opens, mapejades a l'open_id intern."""
+    from collections import defaultdict
+
+    prog: Progress = on_progress or (lambda level, msg: None)
+    db_path = db_path or get_settings().db_path
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    sb = get_client()
+
+    idmap = {
+        (r["torneig_id_extern"], r["divisio_id_extern"]): r["id"]
+        for r in conn.execute(
+            "SELECT id, torneig_id_extern, divisio_id_extern FROM torneigs_individuals"
+        )
+    }
+    counter: dict = defaultdict(int)
+    rows = []
+    for r in conn.execute("SELECT * FROM torneig_partides"):
+        oid = idmap.get((r["torneig_id_extern"], r["divisio_id_extern"]))
+        if oid is None:
+            continue
+        key = (oid, r["fase_id"])
+        counter[key] += 1
+        rows.append({
+            "open_id": oid, "fase_id": r["fase_id"], "ordre": counter[key],
+            "jugador_local": r["player1_nom"], "caramboles_local": r["caramboles1"],
+            "jugador_visitant": r["player2_nom"], "caramboles_visitant": r["caramboles2"],
+            "entrades": r["entrades"],
+        })
+    n = _upsert(sb, "open_partides", rows, "open_id,fase_id,ordre", prog)
+    conn.close()
+    return {"open_partides": n}
