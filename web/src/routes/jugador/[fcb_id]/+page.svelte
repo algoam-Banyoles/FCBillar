@@ -132,11 +132,11 @@
 	const xTicks = $derived.by(() => {
 		const n = rankHist.length;
 		if (n < 2) return [] as { x: number; label: string }[];
-		const k = Math.min(5, n);
+		const k = Math.min(4, n);
 		const ticks: { x: number; label: string }[] = [];
 		for (let i = 0; i < k; i++) {
 			const idx = Math.round((i * (n - 1)) / (k - 1));
-			ticks.push({ x: PAD + (idx / (n - 1)) * (VBW - 2 * PAD), label: `#${rankHist[idx].num_seq}` });
+			ticks.push({ x: PAD + (idx / (n - 1)) * (VBW - 2 * PAD), label: dateShort(rankHist[idx].num_seq) });
 		}
 		return ticks;
 	});
@@ -187,6 +187,33 @@
 		if (n < 2) return;
 		const frac = (ev.clientX - rect.left) / rect.width;
 		selIdx = Math.max(0, Math.min(n - 1, Math.round(frac * (n - 1))));
+	}
+
+	// Data de publicació d'un rànquing (122 = juny 2026, mensual saltant agost).
+	const MESOS_NOM = [
+		'Gener', 'Febrer', 'Març', 'Abril', 'Maig', 'Juny',
+		'Juliol', 'Agost', 'Setembre', 'Octubre', 'Novembre', 'Desembre'
+	];
+	function ymFromSeq(seq: number): [number, number] {
+		let y = 2026,
+			m = 6;
+		for (let i = 0; i < 122 - seq; i++) {
+			m--;
+			if (m === 0) {
+				y--;
+				m = 12;
+			}
+			if (m === 8) m = 7;
+		}
+		return [y, m];
+	}
+	function dateFromSeq(seq: number): string {
+		const [y, m] = ymFromSeq(seq);
+		return `${MESOS_NOM[m - 1]} '${String(y).slice(2)}`;
+	}
+	function dateShort(seq: number): string {
+		const [y, m] = ymFromSeq(seq);
+		return `${String(m).padStart(2, '0')}/${String(y).slice(2)}`;
 	}
 
 	function fmtDate(d: string | null): string {
@@ -258,7 +285,7 @@
 		{#if mitjanaChart}
 			{#if selIdx != null && rankHist[selIdx]}
 				<div class="mb-2 flex items-center justify-center gap-3 rounded-lg bg-slate-900 px-3 py-1.5 text-xs text-white">
-					<span class="font-semibold">Rànquing #{rankHist[selIdx].num_seq}</span>
+					<span class="font-semibold">{dateFromSeq(rankHist[selIdx].num_seq)}</span>
 					<span>mitjana <span class="font-mono font-bold">{rankHist[selIdx].mitjana?.toFixed(3) ?? '—'}</span></span>
 					<span>posició <span class="font-mono font-bold">#{rankHist[selIdx].posicio ?? '—'}</span></span>
 				</div>
