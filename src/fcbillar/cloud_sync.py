@@ -850,6 +850,12 @@ def publish_open_ranking(
     onom = {
         o["id"]: _re.sub(r"\s*-\s*[ÚU]NICA\s*$", "", o["nom"], flags=_re.I).strip() for o in open_rows
     }
+    tnom = {
+        r["id"]: r["temp"]
+        for r in conn.execute(
+            "SELECT ti.id, te.nom AS temp FROM torneigs_individuals ti LEFT JOIN temporades te ON te.id = ti.temporada_id"
+        )
+    }
 
     # Participants per open
     parts: dict = defaultdict(list)
@@ -870,7 +876,7 @@ def publish_open_ranking(
     ordered = sorted(gen_ids, key=lambda t: textid.get(t, 0))  # cronològic global (id_extern)
 
     def _ddet(oid, pos, pp):
-        return {"open": onom.get(oid), "data": open_date.get(oid) or None, "pos": pos, "punts": pp}
+        return {"open": onom.get(oid), "temp": tnom.get(oid), "data": open_date.get(oid) or None, "pos": pos, "punts": pp}
 
     # Un snapshot per ronda: finestra mòbil dels últims 5 opens fins a la ronda i.
     all_rows = []
@@ -899,7 +905,7 @@ def publish_open_ranking(
         for posicio, (fcb, nom, club, total, njug, det) in enumerate(rows_r, start=1):
             all_rows.append({
                 "genere": "general", "ronda": i, "ronda_nom": onom.get(last_open),
-                "ronda_data": open_date.get(last_open) or None,
+                "ronda_data": open_date.get(last_open) or None, "ronda_temp": tnom.get(last_open),
                 "posicio": posicio, "player_fcb_id": fcb, "jugador": nom,
                 "club": club, "opens_jugats": njug, "punts": total,
                 "detall": det,
