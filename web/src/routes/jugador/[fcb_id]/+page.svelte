@@ -11,6 +11,7 @@
 	let modalitats = $state<{ codi: number; nom: string }[]>([]);
 	let selMod = $state<number | null>(null);
 	let shown = $state(60);
+	let serieFilter = $state(false);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
@@ -85,15 +86,9 @@
 	}
 
 	const modGames = $derived(games.filter((g) => selMod == null || g.modalitat_codi === selMod));
-	const kpi = $derived.by(() => {
-		let car = 0,
-			ent = 0,
-			w = 0,
-			l = 0,
-			t = 0,
-			sm = 0,
-			n = 0;
-		for (const g of modGames) {
+	function computeKpi(gs: GameRow[]) {
+		let car = 0, ent = 0, w = 0, l = 0, t = 0, sm = 0, n = 0;
+		for (const g of gs) {
 			const p = persp(g);
 			n++;
 			car += p.myCar;
@@ -104,7 +99,19 @@
 			else l++;
 		}
 		return { n, mitjana: ent ? car / ent : 0, sm, w, l, t, pct: n ? Math.round((100 * w) / n) : 0 };
-	});
+	}
+	const kpi = $derived(computeKpi(modGames));
+	// Temporada actual: comença l'1 d'agost.
+	const seasonStart = (() => {
+		const d = new Date();
+		return `${d.getMonth() + 1 >= 8 ? d.getFullYear() : d.getFullYear() - 1}-08-01`;
+	})();
+	const seasonKpi = $derived(computeKpi(modGames.filter((g) => (g.data_partida ?? '') >= seasonStart)));
+	const displayGames = $derived(
+		serieFilter && kpi.sm > 0
+			? modGames.filter((g) => persp(g).mySerie === kpi.sm)
+			: modGames.slice(0, shown)
+	);
 
 	// Evolució al rànquing (per la modalitat seleccionada): mitjana i posició.
 	let rankHist = $state<{ num_seq: number; posicio: number | null; mitjana: number | null }[]>([]);
@@ -269,17 +276,28 @@
 		<p class="py-6 text-center text-sm text-slate-400">Carregant…</p>
 	{:else}
 		<!-- KPIs -->
-		<div class="mb-4 grid grid-cols-4 gap-2">
-			{#each [['Partides', kpi.n], ['Mitjana', kpi.mitjana.toFixed(3)], ['Sèrie màx', kpi.sm], ['% vict.', kpi.pct + '%']] as [label, val]}
-				<div class="rounded-xl bg-white px-2 py-2.5 text-center ring-1 ring-slate-200">
-					<div class="font-mono text-base font-bold tabular-nums">{val}</div>
-					<div class="text-[10px] uppercase tracking-wide text-slate-400">{label}</div>
-				</div>
-			{/each}
-		</div>
-		<p class="mb-2 px-1 text-xs text-slate-400">
-			{kpi.w} guanyades · {kpi.l} perdudes{kpi.t ? ` · ${kpi.t} empats` : ''}
-		</p>
+		<div class="mb-1 grid grid-cols-4 gap-2">
+				{#each [['Partides', kpi.n, ''], ['Mitjana', kpi.mitjana.toFixed(3), ''], ['Sèrie màx', kpi.sm, 'sm'], ['% vict.', kpi.pct + '%', '']] as [label, val, key]}
+					<button onclick={() => { if (key === 'sm') serieFilter = !serieFilter; }} class="rounded-xl bg-white px-2 py-2.5 text-center ring-1 {key === 'sm' && serieFilter ? 'ring-2 ring-blue-500' : 'ring-slate-200'}">
+						<div class="font-mono text-base font-bold tabular-nums">{val}</div>
+						<div class="text-[10px] uppercase tracking-wide text-slate-400">{label}</div>
+					</button>
+				{/each}
+			</div>
+			<div class="mb-1 grid grid-cols-4 gap-2">
+				{#each [['Partides', seasonKpi.n], ['Mitjana', seasonKpi.mitjana.toFixed(3)], ['Sèrie màx', seasonKpi.sm], ['% vict.', seasonKpi.pct + '%']] as [label, val]}
+					<div class="rounded-lg bg-slate-50 px-2 py-1.5 text-center ring-1 ring-slate-200">
+						<div class="font-mono text-sm font-bold tabular-nums">{val}</div>
+						<div class="text-[9px] uppercase tracking-wide text-slate-400">{label}</div>
+					</div>
+				{/each}
+			</div>
+			<p class="mb-2 px-1 text-[10px] text-slate-400">
+				Fila gris = temporada actual (des de l'1/8) · {kpi.w} G · {kpi.l} P{kpi.t ? ` · ${kpi.t} E` : ''}
+			</p>
+			{#if serieFilter}
+				<p class="mb-2 px-1 text-[11px] text-blue-600">Partides amb la sèrie màxima ({kpi.sm}). Torna a tocar «Sèrie màx» per desfer.</p>
+			{/if}
 
 		<!-- Evolució al rànquing -->
 		{#if mitjanaChart}
