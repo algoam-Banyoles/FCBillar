@@ -9,6 +9,11 @@
 	let expanded = $state<string | null>(null);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
+	let q = $state('');
+	const norm = (s: string | null) => (s ?? '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+	const filteredRows = $derived(
+		q.trim() ? rows.filter((r) => norm(r.jugador).includes(norm(q.trim()))) : rows
+	);
 
 	$effect(() => {
 		const id = openId;

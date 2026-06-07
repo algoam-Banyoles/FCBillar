@@ -112,6 +112,25 @@
 			? modGames.filter((g) => persp(g).mySerie === kpi.sm)
 			: modGames.slice(0, shown)
 	);
+	// Cara a cara (només històric): rival amb més victòries / derrotes / partides (si >1).
+	const h2h = $derived.by(() => {
+		const map = new Map<string, { nom: string; id: string | null; won: number; lost: number; total: number }>();
+		for (const g of modGames) {
+			const p = persp(g);
+			const key = p.oppId ?? p.opp;
+			if (!map.has(key)) map.set(key, { nom: p.opp, id: p.oppId, won: 0, lost: 0, total: 0 });
+			const e = map.get(key)!;
+			e.total++;
+			if (!p.tie) {
+				if (p.won) e.won++;
+				else e.lost++;
+			}
+		}
+		const arr = [...map.values()];
+		const top = (sel: (e: (typeof arr)[number]) => number) =>
+			arr.filter((e) => sel(e) >= 2).sort((a, b) => sel(b) - sel(a))[0] ?? null;
+		return { won: top((e) => e.won), lost: top((e) => e.lost), played: top((e) => e.total) };
+	});
 
 	// Evolució al rànquing (per la modalitat seleccionada): mitjana i posició.
 	let rankHist = $state<{ num_seq: number; posicio: number | null; mitjana: number | null }[]>([]);
@@ -300,6 +319,33 @@
 			{#if serieFilter}
 				<p class="mb-2 px-1 text-[11px] text-blue-600">Partides amb la sèrie màxima ({kpi.sm}). Torna a tocar «Sèrie màx» per desfer.</p>
 			{/if}
+
+		{#if h2h.won || h2h.lost || h2h.played}
+			<div class="mb-4 space-y-1.5 rounded-xl bg-white p-3 ring-1 ring-slate-200">
+				<div class="text-[10px] font-bold uppercase tracking-wide text-slate-400">Cara a cara (històric)</div>
+				{#if h2h.played}
+					<div class="flex items-center gap-2 text-sm">
+						<span class="shrink-0 text-slate-500">Més jugat amb</span>
+						<a href="/jugador/{h2h.played.id}" class="min-w-0 flex-1 truncate text-right font-medium active:underline">{h2h.played.nom}</a>
+						<span class="shrink-0 font-mono font-bold tabular-nums">{h2h.played.total}</span>
+					</div>
+				{/if}
+				{#if h2h.won}
+					<div class="flex items-center gap-2 text-sm">
+						<span class="shrink-0 text-slate-500">Més guanyat a</span>
+						<a href="/jugador/{h2h.won.id}" class="min-w-0 flex-1 truncate text-right font-medium active:underline">{h2h.won.nom}</a>
+						<span class="shrink-0 font-mono font-bold tabular-nums text-emerald-600">{h2h.won.won} G</span>
+					</div>
+				{/if}
+				{#if h2h.lost}
+					<div class="flex items-center gap-2 text-sm">
+						<span class="shrink-0 text-slate-500">Més perdut amb</span>
+						<a href="/jugador/{h2h.lost.id}" class="min-w-0 flex-1 truncate text-right font-medium active:underline">{h2h.lost.nom}</a>
+						<span class="shrink-0 font-mono font-bold tabular-nums text-red-500">{h2h.lost.lost} P</span>
+					</div>
+				{/if}
+			</div>
+		{/if}
 
 		<!-- Evolució al rànquing -->
 		{#if mitjanaChart}
