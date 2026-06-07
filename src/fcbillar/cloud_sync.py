@@ -850,7 +850,6 @@ def publish_open_ranking(
     onom = {
         o["id"]: _re.sub(r"\s*-\s*[ÚU]NICA\s*$", "", o["nom"], flags=_re.I).strip() for o in open_rows
     }
-    ordered = sorted(open_ids, key=lambda t: open_date.get(t, ""))  # cronològic ascendent
 
     # Participants per open
     parts: dict = defaultdict(list)
@@ -865,6 +864,10 @@ def publish_open_ranking(
     ):
         parts[r["oid"]].append((r["fcb_id"], r["nom"], r["club_text"], r["posicio"]))
 
+    # GENERAL = opens NO femenins (els femenins tenen taula de punts pròpia, pendent).
+    gen_ids = [o["id"] for o in open_rows if "FEMENI" not in (o["nom"] or "").upper()]
+    ordered = sorted(gen_ids, key=lambda t: open_date.get(t, ""))  # cronològic ascendent
+
     # Un snapshot per ronda: finestra mòbil dels últims 5 opens fins a la ronda i.
     all_rows = []
     for i in range(1, len(ordered) + 1):
@@ -872,18 +875,22 @@ def publish_open_ranking(
         acc: dict = {}
         for oid in window:
             for fcb, nom, club, pos in parts.get(oid, []):
-                a = acc.setdefault(fcb, {"pts": 0, "n": 0, "nom": nom, "club": club})
-                a["pts"] += points_for_position(pos)
+                a = acc.setdefault(fcb, {"pts": 0, "n": 0, "nom": nom, "club": club, "det": []})
+                pp = points_for_position(pos)
+                a["pts"] += pp
                 a["n"] += 1
+                a["det"].append({"open": onom.get(oid), "data": open_date.get(oid) or None, "pos": pos, "punts": pp})
         last_open = ordered[i - 1]
         ranked = sorted(acc.items(), key=lambda kv: -kv[1]["pts"])
         for posicio, (fcb, a) in enumerate(ranked, start=1):
+            a["det"].sort(key=lambda d: d["data"] or "")
             all_rows.append({
-                "ronda": i, "ronda_nom": onom.get(last_open),
+                "genere": "general", "ronda": i, "ronda_nom": onom.get(last_open),
                 "ronda_data": open_date.get(last_open) or None,
                 "posicio": posicio, "player_fcb_id": fcb, "jugador": a["nom"],
                 "club": a["club"], "opens_jugats": a["n"], "punts": a["pts"],
+                "detall": a["det"],
             })
-    n = _upsert(sb, "open_ranking", all_rows, "ronda,player_fcb_id", prog)
+    n = _upsert(sb, "open_ranking", all_rows, "genere,ronda,player_fcb_id", prog)
     conn.close()
     return {"open_ranking": n}
