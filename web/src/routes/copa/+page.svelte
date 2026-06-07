@@ -229,6 +229,35 @@
 						{/each}
 					</ul>
 				{/if}
+
+				<!-- Resultats del grup -->
+				{#if encOf(g.grup_id).length}
+					<div class="border-t border-slate-100 bg-slate-50/60 p-2">
+						<ul class="space-y-1">
+							{#each encOf(g.grup_id) as e (e.encontre_id)}
+								<li class="overflow-hidden rounded-lg bg-white ring-1 ring-slate-200">
+									<button onclick={() => toggleEnc(e.encontre_id)} class="flex w-full items-center gap-2 px-2 py-1.5 text-xs">
+										<span class="flex-1 truncate text-left font-medium">{e.equip_local}</span>
+										<span class="shrink-0 rounded bg-slate-100 px-1.5 font-mono font-bold tabular-nums">{e.gols_local}–{e.gols_visitant}</span>
+										<span class="flex-1 truncate text-right font-medium">{e.equip_visitant}</span>
+									</button>
+									{#if expandedEnc.has(e.encontre_id)}
+										<div class="border-t border-slate-100 px-2 py-1">
+											{#each partidesCache[e.encontre_id] ?? [] as p}
+												<div class="flex items-center gap-2 py-0.5 text-[11px]">
+													<span class="flex-1 truncate text-left">{p.jugador_local}</span>
+													<span class="shrink-0 font-mono tabular-nums">{p.caramboles_local}–{p.caramboles_visitant}</span>
+													<span class="flex-1 truncate text-right">{p.jugador_visitant}</span>
+													<span class="w-12 shrink-0 text-right text-slate-400">{p.entrades} ent</span>
+												</div>
+											{/each}
+										</div>
+									{/if}
+								</li>
+							{/each}
+						</ul>
+					</div>
+				{/if}
 			{/if}
 		</section>
 	{/each}
