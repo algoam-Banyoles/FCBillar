@@ -184,7 +184,10 @@ def publish_games(
             "SELECT torneig_id_extern, divisio_id_extern, nom FROM torneigs_individuals"
         )
     }
-    open_sig: dict = {}
+    def _sigkey(p1n, c1, p2n, c2, ent):
+        return (frozenset({(_nm(p1n), c1), (_nm(p2n), c2)}), ent)
+
+    open_sig: dict = {}  # key -> (nom_open, {norm_nom: serie})
     try:
         tp_rows = conn.execute("SELECT * FROM torneig_partides").fetchall()
     except sqlite3.OperationalError:
@@ -194,60 +197,78 @@ def publish_games(
         if not nom:
             continue
         nom = _re.sub(r"\s*-\s*[ÚU]NICA\s*$", "", nom, flags=_re.I).strip()
-        key = (
-            frozenset({(_nm(r["player1_nom"]), r["caramboles1"]), (_nm(r["player2_nom"]), r["caramboles2"])}),
-            r["entrades"],
-        )
-        open_sig[key] = nom
+        key = _sigkey(r["player1_nom"], r["caramboles1"], r["player2_nom"], r["caramboles2"], r["entrades"])
+        open_sig[key] = (nom, {_nm(r["player1_nom"]): r["serie1"], _nm(r["player2_nom"]): r["serie2"]})
 
-    def comp_label(r):
+    copa_sig: dict = {}  # key -> {norm_nom: serie}
+    try:
+        cp_rows = conn.execute(
+            "SELECT local_nom, local_caramboles, local_serie, visitant_nom, "
+            "visitant_caramboles, visitant_serie, entrades FROM copa_partides"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        cp_rows = []
+    for r in cp_rows:
+        key = _sigkey(r["local_nom"], r["local_caramboles"], r["visitant_nom"], r["visitant_caramboles"], r["entrades"])
+        copa_sig[key] = {_nm(r["local_nom"]): r["local_serie"], _nm(r["visitant_nom"]): r["visitant_serie"]}
+
+    def enrich(r):
+        """Retorna (etiqueta_competicio, serie1, serie2) enriquint des d'opens/copa."""
         comp, lliga_id = r["competicio"], r["lliga_id"]
+        s1, s2 = r["serie_max1"], r["serie_max2"]
+        label = comp
         if comp == "LLIGA":
-            return "Lliga 4 Modalitats" if lliga_id in multimod else "Lliga 3 Bandes"
-        if comp == "INDIVIDUAL":
-            key = (
-                frozenset({(_nm(r["player1_nom"]), r["caramboles1"]), (_nm(r["player2_nom"]), r["caramboles2"])}),
-                r["entrades"],
+            label = "Lliga 4 Modalitats" if lliga_id in multimod else "Lliga 3 Bandes"
+        elif comp == "INDIVIDUAL":
+            hit = open_sig.get(
+                _sigkey(r["player1_nom"], r["caramboles1"], r["player2_nom"], r["caramboles2"], r["entrades"])
             )
-            return open_sig.get(key, comp)
-        return comp
+            if hit:
+                label = hit[0]
+                if s1 is None:
+                    s1 = hit[1].get(_nm(r["player1_nom"]))
+                if s2 is None:
+                    s2 = hit[1].get(_nm(r["player2_nom"]))
+        elif comp == "COPA":
+            sm = copa_sig.get(
+                _sigkey(r["player1_nom"], r["caramboles1"], r["player2_nom"], r["caramboles2"], r["entrades"])
+            )
+            if sm:
+                if s1 is None:
+                    s1 = sm.get(_nm(r["player1_nom"]))
+                if s2 is None:
+                    s2 = sm.get(_nm(r["player2_nom"]))
+        return label, s1, s2
 
-    games = [
-        {
-            "id": r["id"],
-            "data_partida": r["data_partida"],
-            "modalitat_codi": r["modalitat_codi"],
-            "competicio": comp_label(r),
-            "player1_fcb_id": r["player1_fcb_id"],
-            "player1_nom": r["player1_nom"],
-            "caramboles1": r["caramboles1"],
-            "serie_max1": r["serie_max1"],
-            "player2_fcb_id": r["player2_fcb_id"],
-            "player2_nom": r["player2_nom"],
-            "caramboles2": r["caramboles2"],
-            "serie_max2": r["serie_max2"],
-            "entrades": r["entrades"],
-            "guanyador_fcb_id": r["guanyador_fcb_id"],
-        }
-        for r in conn.execute(
-            """
-            SELECT g.id, g.data_partida, m.codi_fcb AS modalitat_codi,
-                   comp.nom AS competicio, en.lliga_id AS lliga_id,
-                   p1.fcb_id AS player1_fcb_id, p1.nom AS player1_nom,
-                   g.caramboles1, g.serie_max1,
-                   p2.fcb_id AS player2_fcb_id, p2.nom AS player2_nom,
-                   g.caramboles2, g.serie_max2,
-                   g.entrades, pw.fcb_id AS guanyador_fcb_id
-            FROM games g
-            JOIN modalitats m ON m.id = g.modalitat_id
-            LEFT JOIN competicions comp ON comp.id = g.competicio_id
-            LEFT JOIN encontres_lliga en ON en.id = g.encontre_lliga_id
-            JOIN players p1 ON p1.id = g.player1_id
-            JOIN players p2 ON p2.id = g.player2_id
-            LEFT JOIN players pw ON pw.id = g.guanyador_id
-            """
-        )
-    ]
+    games = []
+    for r in conn.execute(
+        """
+        SELECT g.id, g.data_partida, m.codi_fcb AS modalitat_codi,
+               comp.nom AS competicio, en.lliga_id AS lliga_id,
+               p1.fcb_id AS player1_fcb_id, p1.nom AS player1_nom,
+               g.caramboles1, g.serie_max1,
+               p2.fcb_id AS player2_fcb_id, p2.nom AS player2_nom,
+               g.caramboles2, g.serie_max2,
+               g.entrades, pw.fcb_id AS guanyador_fcb_id
+        FROM games g
+        JOIN modalitats m ON m.id = g.modalitat_id
+        LEFT JOIN competicions comp ON comp.id = g.competicio_id
+        LEFT JOIN encontres_lliga en ON en.id = g.encontre_lliga_id
+        JOIN players p1 ON p1.id = g.player1_id
+        JOIN players p2 ON p2.id = g.player2_id
+        LEFT JOIN players pw ON pw.id = g.guanyador_id
+        """
+    ):
+        label, s1, s2 = enrich(r)
+        games.append({
+            "id": r["id"], "data_partida": r["data_partida"], "modalitat_codi": r["modalitat_codi"],
+            "competicio": label,
+            "player1_fcb_id": r["player1_fcb_id"], "player1_nom": r["player1_nom"],
+            "caramboles1": r["caramboles1"], "serie_max1": s1,
+            "player2_fcb_id": r["player2_fcb_id"], "player2_nom": r["player2_nom"],
+            "caramboles2": r["caramboles2"], "serie_max2": s2,
+            "entrades": r["entrades"], "guanyador_fcb_id": r["guanyador_fcb_id"],
+        })
     n = _upsert(sb, "games", games, "id", prog)
     conn.close()
     return {"games": n}

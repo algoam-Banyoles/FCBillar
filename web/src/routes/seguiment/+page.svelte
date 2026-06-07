@@ -138,6 +138,40 @@
 		}).filter(Boolean).join(' ');
 	}
 	const hasHist = $derived(series.some((s) => s.pts.length >= 2));
+
+	// Dates (122 = juny 2026, mensual saltant agost)
+	const MESOS_NOM = ['Gener', 'Febrer', 'Març', 'Abril', 'Maig', 'Juny', 'Juliol', 'Agost', 'Setembre', 'Octubre', 'Novembre', 'Desembre'];
+	function ymFromSeq(seq: number): [number, number] {
+		let y = 2026, m = 6;
+		for (let i = 0; i < 122 - seq; i++) { m--; if (m === 0) { y--; m = 12; } if (m === 8) m = 7; }
+		return [y, m];
+	}
+	const dateFromSeq = (seq: number) => { const [y, m] = ymFromSeq(seq); return `${MESOS_NOM[m - 1]} '${String(y).slice(2)}`; };
+	const dateShort = (seq: number) => { const [y, m] = ymFromSeq(seq); return `${String(m).padStart(2, '0')}/${String(y).slice(2)}`; };
+
+	const allSeq = $derived([...new Set(series.flatMap((s) => s.pts.map((p) => p.seq)))].sort((a, b) => a - b));
+	const xTicksSeg = $derived.by(() => {
+		if (allSeq.length < 2) return [] as number[];
+		const [smin, smax] = seqRange;
+		return [smin, Math.round((smin + smax) / 2), smax];
+	});
+	let selSeq = $state<number | null>(null);
+	function pickSeq(ev: MouseEvent) {
+		const el = ev.currentTarget as Element;
+		const rect = el.getBoundingClientRect();
+		const [smin, smax] = seqRange;
+		if (smax <= smin || !allSeq.length) return;
+		const target = smin + ((ev.clientX - rect.left) / rect.width) * (smax - smin);
+		selSeq = allSeq.reduce((best, s) => (Math.abs(s - target) < Math.abs(best - target) ? s : best), allSeq[0]);
+	}
+	function xForSeq(seq: number): number {
+		const [smin, smax] = seqRange;
+		return PAD + ((seq - smin) / (smax - smin || 1)) * (VBW - 2 * PAD);
+	}
+	function valAt(s: Serie, seq: number, getter: (p: Pt) => number | null): number | null {
+		const pt = s.pts.find((p) => p.seq === seq);
+		return pt ? getter(pt) : null;
+	}
 </script>
 
 <h1 class="mb-3 text-base font-bold">★ Seguiment</h1>
