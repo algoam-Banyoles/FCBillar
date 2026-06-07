@@ -6,7 +6,7 @@
 	let ranking = $state<any[]>([]);
 	let ronda = $state<number | null>(null);
 	let q = $state('');
-	let cat = $state<'opens' | 'camp' | 'ranking'>('opens');
+	let cat = $state<'opens' | 'ranking'>('opens');
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
@@ -47,7 +47,7 @@
 
 	const filtered = $derived(
 		opens
-			.filter((o) => (cat === 'opens' ? isOpen(o.nom) : !isOpen(o.nom)))
+			.filter((o) => isOpen(o.nom))
 			.filter((o) => (q.trim() ? norm(o.nom).includes(norm(q.trim())) : true))
 	);
 </script>
@@ -58,10 +58,6 @@
 		onclick={() => (cat = 'opens')}
 		class="rounded-md px-3 py-1 font-medium {cat === 'opens' ? 'bg-white shadow-sm' : 'text-slate-500'}"
 		>Opens</button>
-	<button
-		onclick={() => (cat = 'camp')}
-		class="rounded-md px-3 py-1 font-medium {cat === 'camp' ? 'bg-white shadow-sm' : 'text-slate-500'}"
-		>Camp. Catalunya</button>
 	<button
 		onclick={() => (cat = 'ranking')}
 		class="rounded-md px-3 py-1 font-medium {cat === 'ranking' ? 'bg-white shadow-sm' : 'text-slate-500'}"
@@ -146,6 +142,6 @@
 		{/each}
 	</ul>
 	<p class="px-1 py-3 text-center text-[11px] text-slate-400">
-		{filtered.length} {cat === 'opens' ? 'opens' : 'campionats'}
+		{filtered.length} opens
 	</p>
 {/if}

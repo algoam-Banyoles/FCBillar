@@ -14,6 +14,7 @@
 		{ href: '/lliga', label: 'Lliga', match: (p: string) => p.startsWith('/lliga') },
 		{ href: '/copa', label: 'Copa', match: (p: string) => p.startsWith('/copa') },
 		{ href: '/opens', label: 'Opens', match: (p: string) => p.startsWith('/opens') },
+		{ href: '/campionats', label: 'Camp. Cat.', match: (p: string) => p.startsWith('/campionats') },
 		{ href: '/cerca', label: 'Cerca', match: (p: string) => p.startsWith('/cerca') },
 		{ href: '/seguiment', label: '★ Seguits', match: (p: string) => p.startsWith('/seguiment') }
 	];

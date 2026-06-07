@@ -477,7 +477,7 @@
 							<div class="truncate text-sm leading-tight">{p.opp}</div>
 						{/if}
 						<div class="text-[11px] text-slate-400">
-							{fmtDate(p.date)} · {p.comp ?? ''}{p.mySerie ? ` · sèrie ${p.mySerie}` : ''}
+							{fmtDate(p.date)} · {p.comp ?? ''}{p.mySerie ? ` · S.M. ${p.mySerie}` : ''}
 						</div>
 					</div>
 					<div class="shrink-0 text-right">
