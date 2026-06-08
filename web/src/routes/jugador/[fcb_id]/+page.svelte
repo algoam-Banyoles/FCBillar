@@ -431,11 +431,11 @@
 					{#if list.length}
 						<div class="flex items-start gap-2 text-sm">
 							<span class="shrink-0 text-slate-500">{title}</span>
-							<div class="min-w-0 flex-1 text-right font-medium">
-								{#each list as e, i}<a
+							<div class="min-w-0 flex-1 space-y-0.5 text-right font-medium">
+								{#each list as e}<a
 										href="/jugador/{e.id}"
-										class="active:underline">{e.nom}</a
-									>{#if i < list.length - 1}<span class="text-slate-300">, </span>{/if}{/each}
+										class="block truncate active:underline">{e.nom}</a
+									>{/each}
 							</div>
 							<span class="shrink-0 font-mono font-bold tabular-nums {color}">{(list[0] as any)[field]}{suf}</span>
 						</div>
