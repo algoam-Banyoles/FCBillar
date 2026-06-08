@@ -676,6 +676,15 @@
 						</div>
 					{/if}
 				</div>
+				{#if rollSel != null && roll15[rollSel]}
+					<div class="mb-1 flex items-center justify-between gap-2 rounded-lg bg-slate-900 px-2 py-1 text-[11px] text-white">
+						<span class="min-w-0 truncate">
+							{#if roll15[rollSel].oppId}<a href="/jugador/{roll15[rollSel].oppId}" class="font-medium active:underline">{roll15[rollSel].opp}</a>{:else}<span class="font-medium">{roll15[rollSel].opp}</span>{/if}
+							<span class="text-slate-300">· {fmtDate(roll15[rollSel].date)}</span>
+						</span>
+						<span class="shrink-0">partida <span class="font-mono font-bold">{roll15[rollSel].g.toFixed(3)}</span></span>
+					</div>
+				{/if}
 				<svg viewBox="0 0 {VBW} {VBH}" preserveAspectRatio="none" onclick={pickRoll} role="presentation" class="h-24 w-full cursor-pointer">
 					{#each [0, 0.25, 0.5, 0.75, 1] as f}
 						<line x1="0" y1={PAD + f * (VBH - 2 * PAD)} x2={VBW} y2={PAD + f * (VBH - 2 * PAD)} stroke="#eef2f7" stroke-width="1" vector-effect="non-scaling-stroke" />
@@ -688,6 +697,7 @@
 					{#if rollSel != null && rollChart.pts[rollSel]}
 						<line x1={rollChart.pts[rollSel].x} y1="2" x2={rollChart.pts[rollSel].x} y2={VBH - 2} stroke="#2563eb" stroke-width="1" vector-effect="non-scaling-stroke" />
 						<circle cx={rollChart.pts[rollSel].x} cy={rollChart.pts[rollSel].y} r="4" fill="#2563eb" stroke="#fff" stroke-width="1.5" />
+						<circle cx={rollChart.gpts[rollSel].x} cy={rollChart.gpts[rollSel].y} r="3.5" fill="#475569" stroke="#fff" stroke-width="1.5" />
 					{/if}
 				</svg>
 				<div class="flex justify-between px-0.5 text-[9px] tabular-nums text-slate-400">
