@@ -13,6 +13,13 @@
 	let shown = $state(60);
 	let serieFilter = $state(false);
 	let clubHist = $state<{ temporada: string; club: string | null }[]>([]);
+	let openRank = $state<{ ronda: number; posicio: number; punts: number }[]>([]);
+	const openCur = $derived.by(() => {
+		if (!openRank.length) return null;
+		const maxR = Math.max(...openRank.map((o) => o.ronda));
+		return openRank.find((o) => o.ronda === maxR) ?? null;
+	});
+	const openBest = $derived(openRank.length ? Math.min(...openRank.map((o) => o.posicio)) : null);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
@@ -57,6 +64,13 @@
 				.eq('player_fcb_id', id)
 				.order('temporada', { ascending: false });
 			clubHist = pc ?? [];
+
+			const { data: or } = await supabase
+				.from('open_ranking')
+				.select('ronda, posicio, punts')
+				.eq('player_fcb_id', id)
+				.eq('genere', 'general');
+			openRank = or ?? [];
 
 			const present = [...new Set(games.map((x) => x.modalitat_codi).filter((v) => v != null))];
 			const { data: md } = await supabase
