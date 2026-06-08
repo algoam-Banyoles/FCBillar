@@ -21,10 +21,10 @@
 	const path = $derived($page.url.pathname);
 </script>
 
-<div class="mx-auto flex min-h-full max-w-screen-sm flex-col">
+<div class="mx-auto flex min-h-full max-w-screen-sm flex-col md:max-w-3xl lg:max-w-5xl">
 	<header class="sticky top-0 z-10 border-b border-slate-200 bg-white/90 backdrop-blur">
-		<div class="flex items-center gap-2 px-4 pt-3">
-			<svg viewBox="0 0 40 40" class="h-7 w-7 shrink-0" aria-hidden="true">
+		<div class="flex items-center gap-2 px-4 pt-3 md:px-6 md:pt-4">
+			<svg viewBox="0 0 40 40" class="h-7 w-7 shrink-0 md:h-9 md:w-9" aria-hidden="true">
 				<rect width="40" height="40" rx="10" fill="#0b3d2e" />
 				<circle cx="20" cy="13.5" r="7" fill="#e0322a" />
 				<circle cx="13.5" cy="24.5" r="7" fill="#f7f7f5" />
@@ -33,19 +33,19 @@
 				<circle cx="11.2" cy="22" r="1.8" fill="#fff" opacity="0.7" />
 				<circle cx="24.2" cy="22" r="1.8" fill="#fff" opacity="0.5" />
 			</svg>
-			<span class="text-base font-bold tracking-tight">FCBillar</span>
+			<span class="text-base font-bold tracking-tight md:text-xl">FCBillar</span>
 		</div>
-		<nav class="flex flex-wrap gap-x-1 gap-y-0 px-3 pt-2">
+		<nav class="flex flex-wrap gap-x-1 gap-y-0 px-3 pt-2 md:px-5">
 			{#each tabs as t}
 				<a
 					href={t.href}
-					class="-mb-px rounded-t-lg px-3 py-2 text-sm font-medium {t.match(path)
+					class="-mb-px rounded-t-lg px-3 py-2 text-sm font-medium md:px-4 md:text-base {t.match(path)
 						? 'border-b-2 border-slate-900 text-slate-900'
 						: 'text-slate-400'}">{t.label}</a>
 			{/each}
 		</nav>
 	</header>
-	<main class="flex-1 px-3 py-3">
+	<main class="flex-1 px-3 py-3 md:px-6 md:py-5">
 		{@render children()}
 	</main>
 	<footer class="px-4 py-4 text-center text-[11px] text-slate-400">

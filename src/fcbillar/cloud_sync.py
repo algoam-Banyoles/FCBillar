@@ -813,10 +813,16 @@ def publish_open_ranking(
     def _sig(p1, c1, p2, c2, e):
         return (frozenset({(_nm(p1), c1), (_nm(p2), c2)}), e)
 
-    open_rows = conn.execute(
-        "SELECT id, nom, torneig_id_extern, divisio_id_extern FROM torneigs_individuals "
-        "WHERE UPPER(nom) LIKE '%OPEN%' AND UPPER(nom) LIKE '%TRES BANDES%'"
-    ).fetchall()
+    # Un open és del circuit de 3 bandes si diu OPEN i no porta cap altra modalitat
+    # (alguns es diuen "OPEN MATARO"/"OPEN COSTA DAURADA", sense "TRES BANDES").
+    _no3b = ("QUADRE", "LLIURE", "BANDA", "QUILLES", "ARTISTIC", "BIATHL", "600", "71/2", "47/2")
+    open_rows = [
+        o
+        for o in conn.execute(
+            "SELECT id, nom, torneig_id_extern, divisio_id_extern FROM torneigs_individuals"
+        ).fetchall()
+        if "OPEN" in (o["nom"] or "").upper() and not any(b in (o["nom"] or "").upper() for b in _no3b)
+    ]
     if not open_rows:
         conn.close()
         return {"open_ranking": 0}
@@ -927,3 +933,38 @@ def publish_open_ranking(
     n = _upsert(sb, "open_ranking", all_rows, "genere,ronda,player_fcb_id", prog)
     conn.close()
     return {"open_ranking": n}
+
+
+def publish_player_clubs(
+    db_path: Path | None = None, on_progress: Progress | None = None
+) -> dict[str, int]:
+    """Històric de clubs per jugador i temporada (de les classificacions d'opens)."""
+    prog: Progress = on_progress or (lambda level, msg: None)
+    db_path = db_path or get_settings().db_path
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    sb = get_client()
+
+    best: dict = {}  # (fcb, temp) -> (club, n)
+    for r in conn.execute(
+        """
+        SELECT p.fcb_id AS fcb, te.nom AS temp, tp.club_text AS club, COUNT(*) AS n
+        FROM torneig_participants tp
+        JOIN torneigs_individuals ti ON ti.id = tp.torneig_id
+        JOIN temporades te ON te.id = ti.temporada_id
+        JOIN players p ON p.id = tp.player_id
+        WHERE p.fcb_id NOT LIKE 'name:%' AND tp.club_text IS NOT NULL AND TRIM(tp.club_text) <> ''
+        GROUP BY p.fcb_id, te.nom, tp.club_text
+        """
+    ):
+        key = (r["fcb"], r["temp"])
+        if key not in best or r["n"] > best[key][1]:
+            best[key] = (r["club"], r["n"])
+    conn.close()
+
+    rows = [
+        {"player_fcb_id": fcb, "temporada": temp, "club": club}
+        for (fcb, temp), (club, _n) in best.items()
+    ]
+    n = _upsert(sb, "player_clubs", rows, "player_fcb_id,temporada", prog)
+    return {"player_clubs": n}

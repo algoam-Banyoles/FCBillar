@@ -28,6 +28,18 @@ def _nm(s: str) -> str:
     return " ".join(s.strip().lower().split())
 
 
+# Un open és del circuit de 3 bandes si diu OPEN i NO porta cap altra modalitat.
+# (alguns es diuen "OPEN MATARO"/"OPEN COSTA DAURADA", sense "TRES BANDES")
+_NO_3B = ("QUADRE", "LLIURE", "BANDA", "QUILLES", "ARTISTIC", "BIATHL", "600", "71/2", "47/2")
+
+
+def is_3b_open(nom: str) -> bool:
+    u = (nom or "").upper()
+    if "OPEN" not in u:
+        return False
+    return not any(b in u for b in _NO_3B)
+
+
 def parse_classif(html: str):
     soup = BeautifulSoup(html, "lxml")
     out = []
@@ -89,8 +101,7 @@ def main() -> None:
                 continue
             for a in BeautifulSoup(lst, "lxml").select("a"):
                 t = a.get_text(strip=True)
-                tu = t.upper()
-                if "OPEN" not in tu or "TRES BANDES" not in tu:
+                if "divisionsIndividual" not in a.get("href", "") or not is_3b_open(t):
                     continue
                 m = re.search(r"divisionsIndividual/(\d+)", a.get("href", ""))
                 if not m:

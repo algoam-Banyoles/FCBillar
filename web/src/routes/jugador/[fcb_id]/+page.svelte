@@ -12,6 +12,7 @@
 	let selMod = $state<number | null>(null);
 	let shown = $state(60);
 	let serieFilter = $state(false);
+	let clubHist = $state<{ temporada: string; club: string | null }[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
@@ -49,6 +50,13 @@
 				.limit(1000);
 			if (e) throw e;
 			games = (g ?? []) as GameRow[];
+
+			const { data: pc } = await supabase
+				.from('player_clubs')
+				.select('temporada, club')
+				.eq('player_fcb_id', id)
+				.order('temporada', { ascending: false });
+			clubHist = pc ?? [];
 
 			const present = [...new Set(games.map((x) => x.modalitat_codi).filter((v) => v != null))];
 			const { data: md } = await supabase
@@ -452,6 +460,20 @@
 						</div>
 						<p class="mt-1 text-right text-[10px] text-slate-300">{posChart.n} rànquings · amunt = millor</p>
 					{/if}
+				</div>
+			</div>
+		{/if}
+
+		{#if clubHist.length}
+			<div class="mb-4 rounded-xl bg-white p-3 ring-1 ring-slate-200">
+				<div class="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Clubs per temporada</div>
+				<div class="flex flex-wrap gap-1.5">
+					{#each clubHist as ch}
+						<div class="rounded-lg bg-slate-50 px-2 py-1 text-[11px] ring-1 ring-slate-200">
+							<span class="font-semibold text-slate-700">{ch.temporada}</span>
+							<span class="text-slate-500">· {ch.club ?? '—'}</span>
+						</div>
+					{/each}
 				</div>
 			</div>
 		{/if}
