@@ -1001,11 +1001,35 @@ def publish_player_clubs(
         key = (r["fcb"], r["temp"])
         if key not in best or r["n"] > best[key][1]:
             best[key] = (r["club"], r["n"])
+
+    # Clubs de lliga (Catalana): omplen les temporades sense dades d'opens.
+    import re as _re
+
+    lliga: dict = {}  # (fcb, temp) -> (club, n)
+    try:
+        for r in conn.execute(
+            """
+            SELECT p.fcb_id AS fcb, lpc.temporada AS temp, lpc.club AS club, COUNT(*) AS n
+            FROM lliga_player_clubs lpc JOIN players p ON p.id = lpc.player_id
+            WHERE p.fcb_id NOT LIKE 'name:%' AND lpc.club IS NOT NULL AND TRIM(lpc.club) <> ''
+            GROUP BY p.fcb_id, lpc.temporada, lpc.club
+            """
+        ):
+            key = (r["fcb"], r["temp"])
+            club = _re.sub(r"\.\s+", ".", r["club"])  # "C.B. LLINARS" → "C.B.LLINARS"
+            if key not in lliga or r["n"] > lliga[key][1]:
+                lliga[key] = (club, r["n"])
+    except sqlite3.OperationalError:
+        pass
     conn.close()
 
     rows = [
-        {"player_fcb_id": fcb, "temporada": temp, "club": club}
-        for (fcb, temp), (club, _n) in best.items()
+        {
+            "player_fcb_id": fcb,
+            "temporada": temp,
+            "club": best[(fcb, temp)][0] if (fcb, temp) in best else lliga[(fcb, temp)][0],
+        }
+        for (fcb, temp) in set(best) | set(lliga)
     ]
     n = _upsert(sb, "player_clubs", rows, "player_fcb_id,temporada", prog)
     return {"player_clubs": n}
