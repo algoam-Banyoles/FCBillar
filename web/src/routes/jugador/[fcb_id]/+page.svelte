@@ -224,6 +224,10 @@
 		const ps = rankHist.map((r) => r.posicio).filter((v): v is number => v != null);
 		return ps.length ? Math.min(...ps) : null;
 	});
+	const bestMitjana = $derived.by(() => {
+		const ms = rankHist.map((r) => r.mitjana).filter((v): v is number => v != null);
+		return ms.length ? Math.max(...ms) : null;
+	});
 	const lastMitjana = $derived(rankHist.at(-1)?.mitjana ?? null);
 	const currentPos = $derived(rankHist.at(-1)?.posicio ?? null);
 	// Les 15 partides que computen al rànquing (data desc; mateix dia → millor promig dins).
