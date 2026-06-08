@@ -13,13 +13,36 @@
 	let shown = $state(60);
 	let serieFilter = $state(false);
 	let clubHist = $state<{ temporada: string; club: string | null }[]>([]);
-	let openRank = $state<{ ronda: number; posicio: number; punts: number }[]>([]);
+	let openRank = $state<
+		{ ronda: number; posicio: number; punts: number; detall?: { pos: number | null }[] }[]
+	>([]);
 	const openCur = $derived.by(() => {
 		if (!openRank.length) return null;
 		const maxR = Math.max(...openRank.map((o) => o.ronda));
 		return openRank.find((o) => o.ronda === maxR) ?? null;
 	});
 	const openBest = $derived(openRank.length ? Math.min(...openRank.map((o) => o.posicio)) : null);
+	const openBestResult = $derived.by(() => {
+		let best: number | null = null;
+		for (const o of openRank)
+			for (const d of o.detall ?? [])
+				if (d.pos != null && (best == null || d.pos < best)) best = d.pos;
+		return best;
+	});
+	// Agrupa temporades consecutives al mateix club en un sol tram.
+	const clubGroups = $derived.by(() => {
+		const sorted = [...clubHist].sort((a, b) => a.temporada.localeCompare(b.temporada));
+		const groups: { club: string | null; y1: number; y2: number }[] = [];
+		for (const ch of sorted) {
+			const [a, b] = ch.temporada.split('-').map(Number);
+			const last = groups[groups.length - 1];
+			if (last && last.club === ch.club && last.y2 === a) last.y2 = b;
+			else groups.push({ club: ch.club, y1: a, y2: b });
+		}
+		return groups
+			.reverse()
+			.map((g) => ({ club: g.club, label: `${g.y1}-${g.y2}` }));
+	});
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
@@ -67,7 +90,7 @@
 
 			const { data: or } = await supabase
 				.from('open_ranking')
-				.select('ronda, posicio, punts')
+				.select('ronda, posicio, punts, detall')
 				.eq('player_fcb_id', id)
 				.eq('genere', 'general');
 			openRank = or ?? [];
@@ -149,9 +172,18 @@
 			}
 		}
 		const arr = [...map.values()];
-		const top = (sel: (e: (typeof arr)[number]) => number) =>
-			arr.filter((e) => sel(e) >= 2).sort((a, b) => sel(b) - sel(a))[0] ?? null;
-		return { won: top((e) => e.won), lost: top((e) => e.lost), played: top((e) => e.total) };
+		// Només els del valor màxim de cada categoria (i >1); si empaten, tots ells.
+		const topTier = (sel: (e: (typeof arr)[number]) => number) => {
+			const f = arr.filter((e) => sel(e) >= 2);
+			if (!f.length) return [];
+			const mx = Math.max(...f.map(sel));
+			return f.filter((e) => sel(e) === mx).sort((a, b) => (a.nom ?? '').localeCompare(b.nom ?? ''));
+		};
+		return {
+			played: topTier((e) => e.total),
+			won: topTier((e) => e.won),
+			lost: topTier((e) => e.lost)
+		};
 	});
 
 	// Evolució al rànquing (per la modalitat seleccionada): mitjana i posició.
@@ -194,6 +226,28 @@
 	});
 	const lastMitjana = $derived(rankHist.at(-1)?.mitjana ?? null);
 	const currentPos = $derived(rankHist.at(-1)?.posicio ?? null);
+	// Les 15 partides que computen al rànquing (data desc; mateix dia → millor promig dins).
+	const rank15 = $derived.by(() => {
+		const sorted = [...modGames].sort((a, b) => {
+			const da = a.data_partida ?? '',
+				db = b.data_partida ?? '';
+			if (da !== db) return db.localeCompare(da);
+			const pa = persp(a),
+				pb = persp(b);
+			return (pb.ent ? pb.myCar / pb.ent : 0) - (pa.ent ? pa.myCar / pa.ent : 0);
+		});
+		const w = sorted.slice(0, 15);
+		let car = 0,
+			ent = 0,
+			sm = 0;
+		for (const g of w) {
+			const p = persp(g);
+			car += p.myCar;
+			ent += p.ent;
+			sm = Math.max(sm, p.mySerie);
+		}
+		return { n: w.length, mitjana: ent ? car / ent : 0, sm };
+	});
 
 	const VBW = 300;
 	const VBH = 84;
@@ -339,7 +393,7 @@
 				{/each}
 			</div>
 			<p class="mb-2 px-1 text-[11px] text-slate-400">
-				Temporada des de l'1 d'agost.
+				{seasonKpi.w} G · {seasonKpi.l} P{seasonKpi.t ? ` · ${seasonKpi.t} E` : ''}
 			</p>
 			{#if serieFilter}
 				<p class="mb-2 px-1 text-[11px] text-blue-600">Partides amb la sèrie màxima ({kpi.sm}). Torna a tocar «Sèrie màx» per desfer.</p>
@@ -348,7 +402,7 @@
 		{#if openRank.length}
 			<div class="mb-4 rounded-xl bg-white p-3 ring-1 ring-slate-200">
 				<div class="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Rànquing d'Opens 3 Bandes</div>
-				<div class="grid grid-cols-3 gap-2">
+				<div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
 					<div class="text-center">
 						<div class="font-mono text-lg font-bold tabular-nums">#{openCur?.posicio ?? '—'}</div>
 						<div class="text-[10px] uppercase tracking-wide text-slate-400">posició actual</div>
@@ -358,6 +412,10 @@
 						<div class="text-[10px] uppercase tracking-wide text-slate-400">millor posició</div>
 					</div>
 					<div class="text-center">
+						<div class="font-mono text-lg font-bold tabular-nums text-amber-500">#{openBestResult ?? '—'}</div>
+						<div class="text-[10px] uppercase tracking-wide text-slate-400">millor en un open</div>
+					</div>
+					<div class="text-center">
 						<div class="font-mono text-lg font-bold tabular-nums">{openCur?.punts ?? '—'}</div>
 						<div class="text-[10px] uppercase tracking-wide text-slate-400">punts</div>
 					</div>
@@ -365,30 +423,48 @@
 			</div>
 		{/if}
 
-		{#if h2h.won || h2h.lost || h2h.played}
-			<div class="mb-4 space-y-1.5 rounded-xl bg-white p-3 ring-1 ring-slate-200">
+		{#if h2h.played.length || h2h.won.length || h2h.lost.length}
+			<div class="mb-4 space-y-2 rounded-xl bg-white p-3 ring-1 ring-slate-200">
 				<div class="text-[10px] font-bold uppercase tracking-wide text-slate-400">Cara a cara (històric)</div>
-				{#if h2h.played}
-					<div class="flex items-center gap-2 text-sm">
-						<span class="shrink-0 text-slate-500">Més jugat amb</span>
-						<a href="/jugador/{h2h.played.id}" class="min-w-0 flex-1 truncate text-right font-medium active:underline">{h2h.played.nom}</a>
-						<span class="shrink-0 font-mono font-bold tabular-nums">{h2h.played.total}</span>
+				{#each [['played', 'Més jugat amb', 'total', '', ''], ['won', 'Més guanyat a', 'won', 'text-emerald-600', ' G'], ['lost', 'Més perdut amb', 'lost', 'text-red-500', ' P']] as [k, title, field, color, suf]}
+					{@const list = h2h[k]}
+					{#if list.length}
+						<div class="flex items-start gap-2 text-sm">
+							<span class="shrink-0 text-slate-500">{title}</span>
+							<div class="min-w-0 flex-1 text-right font-medium">
+								{#each list as e, i}<a
+										href="/jugador/{e.id}"
+										class="active:underline">{e.nom}</a
+									>{#if i < list.length - 1}<span class="text-slate-300">, </span>{/if}{/each}
+							</div>
+							<span class="shrink-0 font-mono font-bold tabular-nums {color}">{(list[0] as any)[field]}{suf}</span>
+						</div>
+					{/if}
+				{/each}
+			</div>
+		{/if}
+
+		{#if currentPos != null}
+			<div class="mb-4 rounded-xl bg-white p-3 ring-1 ring-slate-200">
+				<div class="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Rànquing actual · 15 partides</div>
+				<div class="grid grid-cols-4 gap-2">
+					<div class="text-center">
+						<div class="font-mono text-base font-bold tabular-nums">#{currentPos}</div>
+						<div class="text-[10px] uppercase tracking-wide text-slate-400">posició</div>
 					</div>
-				{/if}
-				{#if h2h.won}
-					<div class="flex items-center gap-2 text-sm">
-						<span class="shrink-0 text-slate-500">Més guanyat a</span>
-						<a href="/jugador/{h2h.won.id}" class="min-w-0 flex-1 truncate text-right font-medium active:underline">{h2h.won.nom}</a>
-						<span class="shrink-0 font-mono font-bold tabular-nums text-emerald-600">{h2h.won.won} G</span>
+					<div class="text-center">
+						<div class="font-mono text-base font-bold tabular-nums">{lastMitjana != null ? lastMitjana.toFixed(3) : '—'}</div>
+						<div class="text-[10px] uppercase tracking-wide text-slate-400">mitjana</div>
 					</div>
-				{/if}
-				{#if h2h.lost}
-					<div class="flex items-center gap-2 text-sm">
-						<span class="shrink-0 text-slate-500">Més perdut amb</span>
-						<a href="/jugador/{h2h.lost.id}" class="min-w-0 flex-1 truncate text-right font-medium active:underline">{h2h.lost.nom}</a>
-						<span class="shrink-0 font-mono font-bold tabular-nums text-red-500">{h2h.lost.lost} P</span>
+					<div class="text-center">
+						<div class="font-mono text-base font-bold tabular-nums">{rank15.sm || '—'}</div>
+						<div class="text-[10px] uppercase tracking-wide text-slate-400">S.M.</div>
 					</div>
-				{/if}
+					<div class="text-center">
+						<div class="font-mono text-base font-bold tabular-nums {lastMitjana != null && rank15.mitjana > lastMitjana ? 'text-emerald-600' : lastMitjana != null && rank15.mitjana < lastMitjana ? 'text-red-500' : ''}">{rank15.n ? rank15.mitjana.toFixed(3) : '—'}</div>
+						<div class="text-[10px] uppercase tracking-wide text-slate-400">previsió</div>
+					</div>
+				</div>
 			</div>
 		{/if}
 
@@ -500,14 +576,14 @@
 			</div>
 		{/if}
 
-		{#if clubHist.length}
+		{#if clubGroups.length}
 			<div class="mb-4 rounded-xl bg-white p-3 ring-1 ring-slate-200">
-				<div class="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Clubs per temporada</div>
+				<div class="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Clubs</div>
 				<div class="flex flex-wrap gap-1.5">
-					{#each clubHist as ch}
+					{#each clubGroups as g}
 						<div class="rounded-lg bg-slate-50 px-2 py-1 text-[11px] ring-1 ring-slate-200">
-							<span class="font-semibold text-slate-700">{ch.temporada}</span>
-							<span class="text-slate-500">· {ch.club ?? '—'}</span>
+							<span class="font-semibold text-slate-700">{g.label}</span>
+							<span class="text-slate-500">· {g.club ?? '—'}</span>
 						</div>
 					{/each}
 				</div>
