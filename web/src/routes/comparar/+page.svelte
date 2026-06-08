@@ -8,12 +8,28 @@
 		nom: string;
 		color: string;
 		games: GameRow[];
-		rank: { num_seq: number; posicio: number | null; mitjana: number | null }[];
+		rank: { num_seq: number; posicio: number | null; mitjana: number | null; mod: number }[];
+	};
+	const MODNOM: Record<number, string> = {
+		1: 'Tres bandes',
+		2: 'Lliure',
+		3: 'Quadre 47/2',
+		4: 'Banda',
+		6: 'Quadre 71/2'
 	};
 
 	let allPlayers = $state<{ fcb_id: string; nom: string }[]>([]);
 	let q = $state('');
 	let sel = $state<Sel[]>([]);
+	let selMod = $state(1);
+	const modalitats = $derived(
+		[...new Set(sel.flatMap((s) => s.games.map((g) => g.modalitat_codi).filter((v) => v != null)))].sort(
+			(a, b) => (a as number) - (b as number)
+		) as number[]
+	);
+	$effect(() => {
+		if (modalitats.length && !modalitats.includes(selMod)) selMod = modalitats[0];
+	});
 
 	function norm(s: string) {
 		return (s ?? '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
@@ -47,9 +63,8 @@
 				.limit(1000),
 			supabase
 				.from('ranking_entries')
-				.select('num_seq, posicio, mitjana_general')
+				.select('num_seq, posicio, mitjana_general, modalitat_codi')
 				.eq('player_fcb_id', p.fcb_id)
-				.eq('modalitat_codi', 1)
 				.order('num_seq', { ascending: true })
 		]);
 		sel = [
@@ -62,7 +77,8 @@
 				rank: (re ?? []).map((r) => ({
 					num_seq: r.num_seq,
 					posicio: r.posicio,
-					mitjana: r.mitjana_general
+					mitjana: r.mitjana_general,
+					mod: r.modalitat_codi
 				}))
 			}
 		];
@@ -78,6 +94,7 @@
 			n = 0,
 			sm = 0;
 		for (const gm of s.games) {
+			if (gm.modalitat_codi !== selMod) continue;
 			const me1 = gm.player1_fcb_id === s.fcb_id;
 			const myCar = (me1 ? gm.caramboles1 : gm.caramboles2) ?? 0;
 			car += myCar;
@@ -89,8 +106,12 @@
 		return { n, mitjana: ent ? car / ent : 0, sm, pct: n ? Math.round((100 * w) / n) : 0 };
 	}
 	const kpis = $derived(sel.map(kpi));
-	const curPos = $derived(sel.map((s) => s.rank.at(-1)?.posicio ?? null));
-	const curMit = $derived(sel.map((s) => s.rank.at(-1)?.mitjana ?? null));
+	const curPos = $derived(
+		sel.map((s) => s.rank.filter((r) => r.mod === selMod).at(-1)?.posicio ?? null)
+	);
+	const curMit = $derived(
+		sel.map((s) => s.rank.filter((r) => r.mod === selMod).at(-1)?.mitjana ?? null)
+	);
 
 	// Cara a cara directe entre els seleccionats (de les partides del primer que els conté).
 	const h2h = $derived.by(() => {
@@ -116,11 +137,13 @@
 		VBH = 90,
 		PAD = 10;
 	const seqRange = $derived.by(() => {
-		const all = sel.flatMap((s) => s.rank.map((r) => r.num_seq));
+		const all = sel.flatMap((s) => s.rank.filter((r) => r.mod === selMod).map((r) => r.num_seq));
 		return all.length ? [Math.min(...all), Math.max(...all)] : [0, 1];
 	});
 	const mitRange = $derived.by(() => {
-		const all = sel.flatMap((s) => s.rank.map((r) => r.mitjana).filter((v): v is number => v != null));
+		const all = sel.flatMap((s) =>
+			s.rank.filter((r) => r.mod === selMod).map((r) => r.mitjana).filter((v): v is number => v != null)
+		);
 		return all.length ? [Math.min(...all), Math.max(...all)] : [0, 1];
 	});
 	function lineFor(s: Sel) {
@@ -129,7 +152,7 @@
 		const [v0, v1] = mitRange,
 			vw = v1 - v0 || 1;
 		return s.rank
-			.filter((r) => r.mitjana != null)
+			.filter((r) => r.mod === selMod && r.mitjana != null)
 			.map((r) => {
 				const x = PAD + ((r.num_seq - s0) / sw) * (VBW - 2 * PAD);
 				const y = VBH - PAD - (((r.mitjana as number) - v0) / vw) * (VBH - 2 * PAD);
@@ -137,7 +160,25 @@
 			})
 			.join(' ');
 	}
-	const hasChart = $derived(sel.some((s) => s.rank.filter((r) => r.mitjana != null).length >= 2));
+	const hasChart = $derived(
+		sel.some((s) => s.rank.filter((r) => r.mod === selMod && r.mitjana != null).length >= 2)
+	);
+
+	// Mitjana de partides per modalitat (per a la taula comparativa).
+	function modMitjana(s: Sel, mod: number): number | null {
+		let car = 0,
+			ent = 0,
+			n = 0;
+		for (const gm of s.games) {
+			if (gm.modalitat_codi !== mod) continue;
+			const me1 = gm.player1_fcb_id === s.fcb_id;
+			car += (me1 ? gm.caramboles1 : gm.caramboles2) ?? 0;
+			ent += gm.entrades ?? 0;
+			n++;
+		}
+		return n ? (ent ? car / ent : 0) : null;
+	}
+	const modMitjanes = $derived(modalitats.map((m) => ({ mod: m, vals: sel.map((s) => modMitjana(s, m)) })));
 </script>
 
 <h1 class="mb-3 text-lg font-bold">Comparador de jugadors</h1>
@@ -176,9 +217,39 @@
 {#if sel.length < 2}
 	<p class="py-6 text-center text-sm text-slate-400">Afegeix com a mínim 2 jugadors per comparar.</p>
 {:else}
-	<!-- KPIs costat a costat -->
+	<!-- Mitjana de joc per modalitat (cadascuna per separat) -->
+	{#if modMitjanes.length}
+		<div class="mb-4 overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
+			<div class="border-b border-slate-100 bg-slate-50 px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+				Mitjana de joc per modalitat
+			</div>
+			{#each modMitjanes as row}
+				<div class="flex items-center gap-2 border-b border-slate-100 px-3 py-2 last:border-0">
+					<span class="w-24 shrink-0 text-[11px] uppercase tracking-wide text-slate-400">{MODNOM[row.mod] ?? row.mod}</span>
+					{#each row.vals as v, i}
+						<span class="flex-1 text-center font-mono text-sm font-bold tabular-nums" style:color={sel[i].color}>{v != null ? v.toFixed(3) : '—'}</span>
+					{/each}
+				</div>
+			{/each}
+		</div>
+	{/if}
+
+	<!-- Selector de modalitat per als KPIs detallats -->
+	{#if modalitats.length > 1}
+		<div class="mb-2 flex flex-wrap gap-1">
+			{#each modalitats as m}
+				<button
+					onclick={() => (selMod = m)}
+					class="rounded-full px-2.5 py-1 text-xs font-medium {selMod === m
+						? 'bg-slate-900 text-white'
+						: 'bg-slate-100 text-slate-500'}">{MODNOM[m] ?? m}</button>
+			{/each}
+		</div>
+	{/if}
+
+	<!-- KPIs de la modalitat seleccionada -->
 	<div class="mb-4 overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
-		{#each [['Posició rànq.', curPos.map((p) => (p != null ? '#' + p : '—'))], ['Mitjana rànq.', curMit.map((m) => (m != null ? m.toFixed(3) : '—'))], ['Partides', kpis.map((k) => k.n)], ['Mitjana global', kpis.map((k) => k.mitjana.toFixed(3))], ['Sèrie màx', kpis.map((k) => k.sm)], ['% victòries', kpis.map((k) => k.pct + '%')]] as [label, vals]}
+		{#each [['Posició rànquing', curPos.map((p) => (p != null ? '#' + p : '—'))], ['Mitjana rànquing', curMit.map((m) => (m != null ? m.toFixed(3) : '—'))], ['Partides', kpis.map((k) => k.n)], ['Sèrie màx', kpis.map((k) => k.sm)], ['% victòries', kpis.map((k) => k.pct + '%')]] as [label, vals]}
 			<div class="flex items-center gap-2 border-b border-slate-100 px-3 py-2 last:border-0">
 				<span class="w-24 shrink-0 text-[11px] uppercase tracking-wide text-slate-400">{label}</span>
 				{#each vals as v, i}
@@ -206,7 +277,7 @@
 	{#if hasChart}
 		<div class="rounded-xl bg-white p-3 ring-1 ring-slate-200">
 			<div class="mb-1 flex items-end justify-between">
-				<span class="text-[10px] font-bold uppercase tracking-wide text-slate-400">Evolució mitjana (3 bandes)</span>
+				<span class="text-[10px] font-bold uppercase tracking-wide text-slate-400">Evolució mitjana rànquing · {MODNOM[selMod] ?? selMod}</span>
 				<span class="text-[9px] tabular-nums text-slate-400">{mitRange[1].toFixed(2)} ↕ {mitRange[0].toFixed(2)}</span>
 			</div>
 			<svg viewBox="0 0 {VBW} {VBH}" preserveAspectRatio="none" class="h-28 w-full">
