@@ -7,8 +7,16 @@
 	let ronda = $state<number | null>(null);
 	let q = $state('');
 	let cat = $state<'opens' | 'ranking'>('opens');
+	let season = $state<string | null>(null);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
+
+	const seasons = $derived(
+		[...new Set(opens.map((o) => (o as any).temporada).filter(Boolean) as string[])].sort().reverse()
+	);
+	$effect(() => {
+		if (season == null && seasons.length) season = seasons[0];
+	});
 
 	let expandedPlayer = $state<string | null>(null);
 	const genRanking = $derived(ranking.filter((r) => r.genere === 'general'));
@@ -57,6 +65,7 @@
 	const filtered = $derived(
 		opens
 			.filter((o) => isOpen(o.nom))
+			.filter((o) => !season || (o as any).temporada === season)
 			.filter((o) => (q.trim() ? norm(o.nom).includes(norm(q.trim())) : true))
 	);
 </script>
@@ -72,6 +81,15 @@
 		class="rounded-md px-3 py-1 font-medium {cat === 'ranking' ? 'bg-white shadow-sm' : 'text-slate-500'}"
 		>Rànquing</button>
 </div>
+
+{#if cat === 'opens' && seasons.length > 1}
+	<select
+		bind:value={season}
+		class="mb-3 w-full rounded-lg border-slate-300 bg-white py-2.5 px-3 text-sm shadow-sm"
+	>
+		{#each seasons as s}<option value={s}>Temporada {s}</option>{/each}
+	</select>
+{/if}
 
 <input
 	bind:value={q}

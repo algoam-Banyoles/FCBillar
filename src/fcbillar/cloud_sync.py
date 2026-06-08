@@ -451,8 +451,11 @@ def publish_opens(
 
     # open_id = id intern (únic: torneig_id_extern es repeteix per divisions).
     opens = [
-        {"open_id": r["id"], "nom": r["nom"], "temporada_id": r["temporada_id"]}
-        for r in conn.execute("SELECT id, nom, temporada_id FROM torneigs_individuals")
+        {"open_id": r["id"], "nom": r["nom"], "temporada_id": r["temporada_id"], "temporada": r["temp"]}
+        for r in conn.execute(
+            "SELECT ti.id, ti.nom, ti.temporada_id, te.nom AS temp "
+            "FROM torneigs_individuals ti LEFT JOIN temporades te ON te.id = ti.temporada_id"
+        )
     ]
     seen: set[tuple[int, str]] = set()
     classifs = []
@@ -1031,5 +1034,93 @@ def publish_player_clubs(
         }
         for (fcb, temp) in set(best) | set(lliga)
     ]
+
+    # Canonicalitza els noms de club: neteja (Descansa/sufixos/codis/AMISTAT),
+    # agrupa pel nucli i aplica el mapping manual de clubs_list.txt.
+    from collections import Counter
+    from pathlib import Path as _Path
+
+    def _clean_club(name):
+        n = name or ""
+        n = _re.sub(r"[“”‘’]", '"', n)
+        n = _re.sub(r"\s+Descansa\s+.*$", "", n, flags=_re.I)
+        n = _re.sub(r"\(\s*AMISTAT\s*\)", "", n, flags=_re.I)
+        n = _re.sub(r"^\d+\s*", "", n)  # codi inicial "01 "
+        n = _re.sub(r'\s*"[A-Z]"', "", n)  # sufix d'equip "A"
+        n = _re.sub(r"\s+[A-D]$", "", n)  # sufix d'equip lletra final
+        n = _re.sub(r"\.\s+", ".", n)  # "C.B. X" → "C.B.X"
+        return n.strip()
+
+    def _club_key(name):
+        n = _clean_club(name).upper()
+        n = _re.sub(r"^([A-Z]\.)+", "", n)  # treu prefix d'inicials (C.B., S.B.F., ...)
+        return _re.sub(r"[^A-Z0-9]", "", n)  # nucli
+
+    keycount: dict = {}
+    for r in rows:
+        cl = _clean_club(r["club"])
+        if cl:
+            keycount.setdefault(_club_key(r["club"]), Counter())[cl] += 1
+    canon = {}
+    for k, cnt in keycount.items():
+        prefixed = {nm: c for nm, c in cnt.items() if _re.match(r"^[A-Z]\.", nm)}
+        pool = prefixed or dict(cnt)
+        canon[k] = max(pool.items(), key=lambda x: x[1])[0]
+
+    # Mapping manual (variant = nom bo), resolt transitivament.
+    usermap: dict = {}
+    mapf = _Path(__file__).resolve().parents[2] / "clubs_list.txt"
+    if mapf.exists():
+        for line in mapf.read_text(encoding="utf-8").splitlines():
+            if "=" in line:
+                left, right = line.split("=", 1)
+                if left.strip() and right.strip():
+                    usermap[left.strip()] = right.strip()
+
+    def _resolve(name):
+        seen = set()
+        while name in usermap and name not in seen and usermap[name] != name:
+            seen.add(name)
+            name = usermap[name]
+        return name
+
+    # Dedueix la resta: agrupa per nucli SENSE accents ni sufix "zona N" i tria
+    # la millor forma (target manual > amb prefix > més accentuada).
+    import unicodedata as _ud2
+
+    def _noacc(s):
+        return "".join(c for c in _ud2.normalize("NFD", s) if not _ud2.combining(c))
+
+    def _naccents(s):
+        return sum(1 for c in _ud2.normalize("NFD", s) if _ud2.combining(c))
+
+    def _smart(name):
+        n = _noacc(_clean_club(name)).upper()
+        n = _re.sub(r"\b(ZONA\s*\d+|Z\d+)\b", "", n)
+        n = _re.sub(r"^([A-Z]\.)+", "", n)
+        return _re.sub(r"[^A-Z0-9]", "", n)
+
+    targets = set(usermap.values())
+    allc = set(canon.values())
+    inter = {c: _resolve(c) for c in allc}
+    grp: dict = {}
+    for c in allc:
+        grp.setdefault(_smart(inter[c]), []).append(inter[c])
+    bestof = {}
+    for k, names in grp.items():
+        bestof[k] = max(
+            set(names),
+            key=lambda nm: (nm in targets, bool(_re.match(r"^[A-Z]\.", nm)), _naccents(nm), nm),
+        )
+    final = {c: bestof[_smart(inter[c])] for c in allc}
+
+    for r in rows:
+        mc = canon.get(_club_key(r["club"]), _clean_club(r["club"]))
+        r["club"] = final.get(mc, _resolve(mc))
+
+    # Filtra els "no club" (Cap / Independent / buit).
+    _noclub = {"CAP", "INDEPENDENT", "INDEPENDIENT", ""}
+    rows = [r for r in rows if (r["club"] or "").strip().upper() not in _noclub]
+
     n = _upsert(sb, "player_clubs", rows, "player_fcb_id,temporada", prog)
     return {"player_clubs": n}

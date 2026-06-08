@@ -16,6 +16,8 @@
 		{ href: '/opens', label: 'Opens', match: (p: string) => p.startsWith('/opens') },
 		{ href: '/campionats', label: 'Camp. Cat.', match: (p: string) => p.startsWith('/campionats') },
 		{ href: '/cerca', label: 'Cerca', match: (p: string) => p.startsWith('/cerca') },
+		{ href: '/comparar', label: 'Comparar', match: (p: string) => p.startsWith('/comparar') },
+		{ href: '/records', label: 'Rècords', match: (p: string) => p.startsWith('/records') },
 		{ href: '/seguiment', label: '★ Seguits', match: (p: string) => p.startsWith('/seguiment') }
 	];
 	const path = $derived($page.url.pathname);

@@ -7,6 +7,7 @@
 
 	let nom = $state('');
 	let club = $state<string | null>(null);
+	let clubId = $state<string | null>(null);
 	let games = $state<GameRow[]>([]);
 	let modalitats = $state<{ codi: number; nom: string }[]>([]);
 	let selMod = $state<number | null>(null);
@@ -62,6 +63,7 @@
 				.eq('fcb_id', id)
 				.maybeSingle();
 			nom = p?.nom ?? id;
+			clubId = p?.club_fcb_id ?? null;
 			if (p?.club_fcb_id) {
 				const { data: c } = await supabase
 					.from('clubs')
@@ -464,7 +466,7 @@
 	<div class="mb-3 flex items-start justify-between gap-3">
 		<div class="min-w-0">
 			<h1 class="text-lg font-bold leading-tight">{nom}</h1>
-			{#if club}<p class="text-sm text-slate-400">{club}</p>{/if}
+			{#if club}<a href="/club/{clubId}" class="text-sm text-slate-400 active:underline">{club}</a>{/if}
 		</div>
 		<button
 			onclick={() => toggleFollow(fcbId)}
