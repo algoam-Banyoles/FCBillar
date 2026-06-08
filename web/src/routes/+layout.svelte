@@ -50,7 +50,7 @@
 	</main>
 	<footer class="flex flex-col items-center gap-2 px-4 py-6 text-center text-[11px] text-slate-400">
 		<img src="/logo-ag.png" alt="Propietari de l'aplicació" class="h-7 w-auto opacity-80" />
-		<p>© Aplicació de propietat privada. No se'n permet la distribució no autoritzada.</p>
+		<p>No se'n permet la distribució no autoritzada.</p>
 		<p class="text-slate-300">Dades de la Federació Catalana de Billar · ús personal</p>
 	</footer>
 </div>

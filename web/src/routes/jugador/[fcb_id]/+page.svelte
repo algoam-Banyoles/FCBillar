@@ -239,14 +239,20 @@
 		const w = sorted.slice(0, 15);
 		let car = 0,
 			ent = 0,
-			sm = 0;
+			sm = 0,
+			won = 0,
+			lost = 0,
+			tie = 0;
 		for (const g of w) {
 			const p = persp(g);
 			car += p.myCar;
 			ent += p.ent;
 			sm = Math.max(sm, p.mySerie);
+			if (p.tie) tie++;
+			else if (p.won) won++;
+			else lost++;
 		}
-		return { n: w.length, mitjana: ent ? car / ent : 0, sm };
+		return { n: w.length, mitjana: ent ? car / ent : 0, sm, won, lost, tie };
 	});
 
 	const VBW = 300;
@@ -420,6 +426,9 @@
 						<div class="text-[10px] uppercase tracking-wide text-slate-400">previsió</div>
 					</div>
 				</div>
+				<p class="mt-2 px-1 text-[11px] text-slate-400">
+					{rank15.won} G · {rank15.lost} P{rank15.tie ? ` · ${rank15.tie} E` : ''}
+				</p>
 			</div>
 		{/if}
 
