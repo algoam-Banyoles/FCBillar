@@ -44,16 +44,33 @@ def main() -> None:
 
     total = len(combos)
     print(f"combos pendents: {total}", flush=True)
-    ok = err = 0
-    with ScraperClient(s) as cl:
+    ok = err = consec = 0
+
+    def _new_client():
+        cl = ScraperClient(s)
+        cl.__enter__()
+        return cl
+
+    cl = _new_client()
+    try:
         for i, (num, mod, fcb) in enumerate(combos, 1):
             try:
                 ingest_partides(cl, num, mod, fcb, settings=s, create_missing_players=True)
                 ok += 1
+                consec = 0
             except Exception:  # noqa: BLE001
                 err += 1
+                consec += 1
+            # Refresca la sessió periòdicament o si hi ha molts errors seguits
+            # (símptoma de sessió morta a mig camí).
+            if i % 1500 == 0 or consec == 30:
+                cl.__exit__(None, None, None)
+                cl = _new_client()
+                consec = 0
             if i % 250 == 0:
                 print(f"  {i}/{total} (ok={ok} err={err})", flush=True)
+    finally:
+        cl.__exit__(None, None, None)
     print(f"FET ({ok}/{total}, err={err})", flush=True)
 
 
