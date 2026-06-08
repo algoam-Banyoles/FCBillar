@@ -60,8 +60,8 @@ def main() -> None:
     add(
         "Millor sèrie (3B)",
         f"""SELECT p.fcb_id fcb, p.nom, MAX(x.s) v FROM (
-            SELECT DISTINCT g.id gid, g.player1_id pid, g.serie_max1 s FROM {G3B} WHERE g.serie_max1 IS NOT NULL
-            UNION SELECT DISTINCT g.id, g.player2_id, g.serie_max2 FROM {G3B} WHERE g.serie_max2 IS NOT NULL
+            SELECT DISTINCT g.id gid, g.player1_id pid, g.serie_max1 s FROM {G3B} WHERE g.serie_max1 IS NOT NULL AND g.serie_max1 <= 20
+            UNION SELECT DISTINCT g.id, g.player2_id, g.serie_max2 FROM {G3B} WHERE g.serie_max2 IS NOT NULL AND g.serie_max2 <= 20
         ) x JOIN players p ON p.id=x.pid WHERE p.fcb_id NOT LIKE 'name:%' GROUP BY p.id ORDER BY v DESC LIMIT 5""",
         lambda r: str(r["v"]),
     )
