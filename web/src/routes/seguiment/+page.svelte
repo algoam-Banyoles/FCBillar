@@ -274,6 +274,16 @@
 								{#each series as s}
 									<polyline points={lineFor(s, getter, inv)} fill="none" stroke={s.color} stroke-width="1.5" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
 								{/each}
+								{#if selSeq != null}
+									<line x1={xForSeq(selSeq)} y1="2" x2={xForSeq(selSeq)} y2={VBH - 2} stroke="#475569" stroke-width="1" vector-effect="non-scaling-stroke" />
+									{#each series as s}
+										{@const v = valAt(s, selSeq, getter)}
+										{#if v != null}
+											{@const t = inv ? 1 - (v - vr[0]) / (vr[1] - vr[0]) : (v - vr[0]) / (vr[1] - vr[0])}
+											<circle cx={xForSeq(selSeq)} cy={VBH - PAD - t * (VBH - 2 * PAD)} r="3.5" fill={s.color} stroke="#fff" stroke-width="1" />
+										{/if}
+									{/each}
+								{/if}
 							</svg>
 						</div>
 						<div class="flex justify-between pl-10 text-[9px] tabular-nums text-slate-400">
