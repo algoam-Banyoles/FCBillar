@@ -364,21 +364,29 @@
 		}
 		return out;
 	});
+	// Finestra visible de 15 punts; l'slider la mou en packs de 15.
+	const WIN = 15;
+	const rollMaxStart = $derived(Math.max(0, roll15.length - WIN));
+	let rollStart = $state(0);
 	let rollSel = $state<number | null>(null);
 	$effect(() => {
-		rollSel = roll15.length ? roll15.length - 1 : null;
+		rollStart = rollMaxStart; // per defecte, la finestra més recent
 	});
+	$effect(() => {
+		rollSel = roll15.length ? Math.min(rollStart + WIN - 1, roll15.length - 1) : null;
+	});
+	const rollWin = $derived(roll15.slice(rollStart, rollStart + WIN));
 	const rollChart = $derived.by(() => {
-		if (!roll15.length) return null;
-		const all = [...roll15.map((r) => r.avg), ...roll15.map((r) => r.g)];
+		if (!rollWin.length) return null;
+		const all = [...rollWin.map((r) => r.avg), ...rollWin.map((r) => r.g)];
 		const lo = Math.min(...all),
 			hi = Math.max(...all),
 			range = hi - lo || 1,
-			n = roll15.length;
+			n = rollWin.length;
 		const X = (i: number) => PAD + (n === 1 ? 0.5 : i / (n - 1)) * (VBW - 2 * PAD);
 		const Y = (v: number) => VBH - PAD - ((v - lo) / range) * (VBH - 2 * PAD);
-		const pts = roll15.map((r, i) => ({ x: X(i), y: Y(r.avg) }));
-		const gpts = roll15.map((r, i) => ({ x: X(i), y: Y(r.g) }));
+		const pts = rollWin.map((r, i) => ({ x: X(i), y: Y(r.avg) }));
+		const gpts = rollWin.map((r, i) => ({ x: X(i), y: Y(r.g) }));
 		return {
 			pts,
 			gpts,
@@ -391,10 +399,10 @@
 	function pickRoll(ev: MouseEvent) {
 		const el = ev.currentTarget as Element;
 		const rect = el.getBoundingClientRect();
-		const n = roll15.length;
-		if (n < 2) return;
+		const n = rollWin.length;
+		if (n < 1) return;
 		const frac = (ev.clientX - rect.left) / rect.width;
-		rollSel = Math.max(0, Math.min(n - 1, Math.round(frac * (n - 1))));
+		rollSel = rollStart + Math.max(0, Math.min(n - 1, Math.round(frac * (n - 1))));
 	}
 
 	// Selecció de punt (clic): mostra els valors del punt més proper als dos gràfics.
@@ -735,19 +743,20 @@
 						<circle cx={gp.x} cy={gp.y} r="1.6" fill="#94a3b8" />
 					{/each}
 					<polyline points={rollChart.line} fill="none" stroke="#2563eb" stroke-width="1.5" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
-					{#if rollSel != null && rollChart.pts[rollSel]}
-						<line x1={rollChart.pts[rollSel].x} y1="2" x2={rollChart.pts[rollSel].x} y2={VBH - 2} stroke="#2563eb" stroke-width="1" vector-effect="non-scaling-stroke" />
-						<circle cx={rollChart.pts[rollSel].x} cy={rollChart.pts[rollSel].y} r="4" fill="#2563eb" stroke="#fff" stroke-width="1.5" />
-						<circle cx={rollChart.gpts[rollSel].x} cy={rollChart.gpts[rollSel].y} r="3.5" fill="#475569" stroke="#fff" stroke-width="1.5" />
+					{#if rollSel != null && rollSel - rollStart >= 0 && rollSel - rollStart < rollWin.length}
+						{@const li = rollSel - rollStart}
+						<line x1={rollChart.pts[li].x} y1="2" x2={rollChart.pts[li].x} y2={VBH - 2} stroke="#2563eb" stroke-width="1" vector-effect="non-scaling-stroke" />
+						<circle cx={rollChart.pts[li].x} cy={rollChart.pts[li].y} r="4" fill="#2563eb" stroke="#fff" stroke-width="1.5" />
+						<circle cx={rollChart.gpts[li].x} cy={rollChart.gpts[li].y} r="3.5" fill="#475569" stroke="#fff" stroke-width="1.5" />
 					{/if}
 				</svg>
 				<div class="flex justify-between px-0.5 text-[9px] tabular-nums text-slate-400">
 					<span>mín {rollChart.lo.toFixed(3)}</span>
 					<span>màx {rollChart.hi.toFixed(3)}</span>
 				</div>
-				{#if roll15.length > 1}
-					<input type="range" min="0" max={roll15.length - 1} bind:value={rollSel} class="thin-range mt-2 w-full" />
-					<p class="text-center text-[10px] text-slate-400">finestra {(rollSel ?? 0) + 1} de {roll15.length} · llisca per recórrer enrere</p>
+				{#if roll15.length > WIN}
+					<input type="range" min="0" max={rollMaxStart} step={WIN} bind:value={rollStart} class="thin-range mt-2 w-full" />
+					<p class="text-center text-[10px] text-slate-400">partides {rollStart + 1}–{Math.min(rollStart + WIN, roll15.length)} de {roll15.length} · packs de {WIN}</p>
 				{/if}
 			</div>
 		{/if}
