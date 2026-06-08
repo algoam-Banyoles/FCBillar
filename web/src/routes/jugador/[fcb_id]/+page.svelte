@@ -290,6 +290,48 @@
 	const mitjanaChart = $derived(chartData(rankHist.map((r) => r.mitjana)));
 	const posChart = $derived(chartData(rankHist.map((r) => r.posicio), true));
 
+	// Mitjana mòbil de 15 partides: a cada posició, la mitjana de les 15 acabant allà.
+	const roll15 = $derived.by(() => {
+		const asc = [...modGames].sort((a, b) => (a.data_partida ?? '').localeCompare(b.data_partida ?? ''));
+		const out: { avg: number; from: string | null; to: string | null }[] = [];
+		for (let i = 14; i < asc.length; i++) {
+			let car = 0,
+				ent = 0;
+			for (let j = i - 14; j <= i; j++) {
+				const p = persp(asc[j]);
+				car += p.myCar;
+				ent += p.ent;
+			}
+			out.push({ avg: ent ? car / ent : 0, from: asc[i - 14].data_partida, to: asc[i].data_partida });
+		}
+		return out;
+	});
+	let rollSel = $state<number | null>(null);
+	$effect(() => {
+		rollSel = roll15.length ? roll15.length - 1 : null;
+	});
+	const rollChart = $derived.by(() => {
+		if (!roll15.length) return null;
+		const avgs = roll15.map((r) => r.avg);
+		const lo = Math.min(...avgs),
+			hi = Math.max(...avgs),
+			range = hi - lo || 1,
+			n = roll15.length;
+		const pts = roll15.map((r, i) => ({
+			x: PAD + (n === 1 ? 0.5 : i / (n - 1)) * (VBW - 2 * PAD),
+			y: VBH - PAD - ((r.avg - lo) / range) * (VBH - 2 * PAD)
+		}));
+		return { pts, lo, hi, line: pts.map((p) => `${p.x},${p.y}`).join(' ') };
+	});
+	function pickRoll(ev: MouseEvent) {
+		const el = ev.currentTarget as Element;
+		const rect = el.getBoundingClientRect();
+		const n = roll15.length;
+		if (n < 2) return;
+		const frac = (ev.clientX - rect.left) / rect.width;
+		rollSel = Math.max(0, Math.min(n - 1, Math.round(frac * (n - 1))));
+	}
+
 	// Selecció de punt (clic): mostra els valors del punt més proper als dos gràfics.
 	let selIdx = $state<number | null>(null);
 	function pickPoint(ev: MouseEvent) {
@@ -596,6 +638,38 @@
 						<p class="mt-1 text-right text-[10px] text-slate-300">{posChart.n} rànquings · amunt = millor</p>
 					{/if}
 				</div>
+			</div>
+		{/if}
+
+		{#if rollChart && roll15.length}
+			<div class="mb-4 rounded-xl bg-white p-3 ring-1 ring-slate-200">
+				<div class="mb-1 flex items-end justify-between">
+					<span class="text-[10px] font-bold uppercase tracking-wide text-slate-400">Mitjana mòbil · 15 partides</span>
+					{#if rollSel != null && roll15[rollSel]}
+						<div class="text-right">
+							<div class="font-mono text-base font-bold leading-none tabular-nums text-blue-600">{roll15[rollSel].avg.toFixed(3)}</div>
+							<div class="text-[9px] text-slate-400">{fmtDate(roll15[rollSel].from)} – {fmtDate(roll15[rollSel].to)}</div>
+						</div>
+					{/if}
+				</div>
+				<svg viewBox="0 0 {VBW} {VBH}" preserveAspectRatio="none" onclick={pickRoll} role="presentation" class="h-24 w-full cursor-pointer">
+					{#each [0, 0.25, 0.5, 0.75, 1] as f}
+						<line x1="0" y1={PAD + f * (VBH - 2 * PAD)} x2={VBW} y2={PAD + f * (VBH - 2 * PAD)} stroke="#eef2f7" stroke-width="1" vector-effect="non-scaling-stroke" />
+					{/each}
+					<polyline points={rollChart.line} fill="none" stroke="#2563eb" stroke-width="1.5" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
+					{#if rollSel != null && rollChart.pts[rollSel]}
+						<line x1={rollChart.pts[rollSel].x} y1="2" x2={rollChart.pts[rollSel].x} y2={VBH - 2} stroke="#2563eb" stroke-width="1" vector-effect="non-scaling-stroke" />
+						<circle cx={rollChart.pts[rollSel].x} cy={rollChart.pts[rollSel].y} r="4" fill="#2563eb" stroke="#fff" stroke-width="1.5" />
+					{/if}
+				</svg>
+				<div class="flex justify-between px-0.5 text-[9px] tabular-nums text-slate-400">
+					<span>mín {rollChart.lo.toFixed(3)}</span>
+					<span>màx {rollChart.hi.toFixed(3)}</span>
+				</div>
+				{#if roll15.length > 1}
+					<input type="range" min="0" max={roll15.length - 1} bind:value={rollSel} class="mt-2 w-full accent-blue-600" />
+					<p class="text-center text-[10px] text-slate-400">finestra {(rollSel ?? 0) + 1} de {roll15.length} · llisca per recórrer enrere</p>
+				{/if}
 			</div>
 		{/if}
 
