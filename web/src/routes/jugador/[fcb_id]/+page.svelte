@@ -293,7 +293,15 @@
 	// Mitjana mòbil de 15 partides: a cada posició, la mitjana de les 15 acabant allà.
 	const roll15 = $derived.by(() => {
 		const asc = [...modGames].sort((a, b) => (a.data_partida ?? '').localeCompare(b.data_partida ?? ''));
-		const out: { avg: number; g: number; from: string | null; to: string | null }[] = [];
+		const out: {
+			avg: number;
+			g: number;
+			opp: string;
+			oppId: string | null;
+			date: string | null;
+			from: string | null;
+			to: string | null;
+		}[] = [];
 		for (let i = 14; i < asc.length; i++) {
 			let car = 0,
 				ent = 0;
@@ -306,6 +314,9 @@
 			out.push({
 				avg: ent ? car / ent : 0,
 				g: pg.ent ? pg.myCar / pg.ent : 0,
+				opp: pg.opp,
+				oppId: pg.oppId,
+				date: pg.date,
 				from: asc[i - 14].data_partida,
 				to: asc[i].data_partida
 			});
@@ -327,7 +338,14 @@
 		const Y = (v: number) => VBH - PAD - ((v - lo) / range) * (VBH - 2 * PAD);
 		const pts = roll15.map((r, i) => ({ x: X(i), y: Y(r.avg) }));
 		const gpts = roll15.map((r, i) => ({ x: X(i), y: Y(r.g) }));
-		return { pts, gpts, lo, hi, line: pts.map((p) => `${p.x},${p.y}`).join(' ') };
+		return {
+			pts,
+			gpts,
+			lo,
+			hi,
+			line: pts.map((p) => `${p.x},${p.y}`).join(' '),
+			gline: gpts.map((p) => `${p.x},${p.y}`).join(' ')
+		};
 	});
 	function pickRoll(ev: MouseEvent) {
 		const el = ev.currentTarget as Element;
@@ -662,8 +680,9 @@
 					{#each [0, 0.25, 0.5, 0.75, 1] as f}
 						<line x1="0" y1={PAD + f * (VBH - 2 * PAD)} x2={VBW} y2={PAD + f * (VBH - 2 * PAD)} stroke="#eef2f7" stroke-width="1" vector-effect="non-scaling-stroke" />
 					{/each}
+					<polyline points={rollChart.gline} fill="none" stroke="#94a3b8" stroke-width="1" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
 					{#each rollChart.gpts as gp}
-						<circle cx={gp.x} cy={gp.y} r="2" fill="#cbd5e1" />
+						<circle cx={gp.x} cy={gp.y} r="1.6" fill="#94a3b8" />
 					{/each}
 					<polyline points={rollChart.line} fill="none" stroke="#2563eb" stroke-width="1.5" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
 					{#if rollSel != null && rollChart.pts[rollSel]}
