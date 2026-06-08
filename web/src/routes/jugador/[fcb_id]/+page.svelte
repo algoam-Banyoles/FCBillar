@@ -784,3 +784,31 @@
 		</div>
 	{/if}
 {/if}
+
+<style>
+	.thin-range {
+		-webkit-appearance: none;
+		appearance: none;
+		height: 2px;
+		border-radius: 9999px;
+		background: #e2e8f0;
+		cursor: pointer;
+	}
+	.thin-range::-webkit-slider-thumb {
+		-webkit-appearance: none;
+		appearance: none;
+		width: 11px;
+		height: 11px;
+		border-radius: 9999px;
+		background: #2563eb;
+		cursor: pointer;
+	}
+	.thin-range::-moz-range-thumb {
+		width: 11px;
+		height: 11px;
+		border: none;
+		border-radius: 9999px;
+		background: #2563eb;
+		cursor: pointer;
+	}
+</style>
