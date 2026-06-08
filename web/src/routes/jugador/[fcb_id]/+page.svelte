@@ -13,6 +13,7 @@
 	let shown = $state(60);
 	let serieFilter = $state(false);
 	let clubHist = $state<{ temporada: string; club: string | null }[]>([]);
+	let copaPend = $state<{ opp: string; myCar: number; oppCar: number; ent: number; grup: string }[]>([]);
 	let openRank = $state<
 		{ ronda: number; posicio: number; punts: number; detall?: { pos: number | null }[] }[]
 	>([]);
@@ -80,6 +81,46 @@
 				.limit(1000);
 			if (e) throw e;
 			games = (g ?? []) as GameRow[];
+
+			// Copa recent que encara no compta (a copa_partides però no a games).
+			const copaSig = new Set(
+				games
+					.filter((x) => x.competicio === 'COPA')
+					.map(
+						(x) =>
+							[(x.player1_nom ?? '').toLowerCase(), (x.player2_nom ?? '').toLowerCase()]
+								.sort()
+								.join('|') +
+							'|' +
+							(x.entrades ?? '')
+					)
+			);
+			const csel = 'jugador_local, caramboles_local, jugador_visitant, caramboles_visitant, entrades';
+			const [{ data: cl }, { data: cv }] = await Promise.all([
+				supabase.from('copa_partides').select(csel).eq('jugador_local', nom),
+				supabase.from('copa_partides').select(csel).eq('jugador_visitant', nom)
+			]);
+			copaPend = [...(cl ?? []), ...(cv ?? [])]
+				.filter(
+					(cp: any) =>
+						!copaSig.has(
+							[(cp.jugador_local ?? '').toLowerCase(), (cp.jugador_visitant ?? '').toLowerCase()]
+								.sort()
+								.join('|') +
+								'|' +
+								(cp.entrades ?? '')
+						)
+				)
+				.map((cp: any) => {
+					const meLocal = cp.jugador_local === nom;
+					return {
+						opp: (meLocal ? cp.jugador_visitant : cp.jugador_local) ?? '—',
+						myCar: (meLocal ? cp.caramboles_local : cp.caramboles_visitant) ?? 0,
+						oppCar: (meLocal ? cp.caramboles_visitant : cp.caramboles_local) ?? 0,
+						ent: cp.entrades ?? 0,
+						grup: 'Copa'
+					};
+				});
 
 			const { data: pc } = await supabase
 				.from('player_clubs')
@@ -728,6 +769,26 @@
 			</div>
 			<div class="min-w-0">
 			<!-- Partides recents -->
+			{#if copaPend.length}
+				<div class="mb-3 rounded-xl border border-blue-200 bg-blue-50 p-3">
+					<div class="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-blue-700">
+						Recents · encara no computen al rànquing
+					</div>
+					<ul class="space-y-1">
+						{#each copaPend as cp}
+							<li class="flex items-center gap-3 text-sm">
+								<span class="w-5 shrink-0 text-center text-xs font-bold {cp.myCar > cp.oppCar ? 'text-emerald-600' : cp.myCar < cp.oppCar ? 'text-red-500' : 'text-slate-400'}">{cp.myCar > cp.oppCar ? 'G' : cp.myCar < cp.oppCar ? 'P' : 'E'}</span>
+								<span class="min-w-0 flex-1 truncate">{cp.opp}</span>
+								<span class="shrink-0 text-[10px] uppercase text-blue-600">{cp.grup}</span>
+								<div class="shrink-0 text-right">
+									<div class="font-mono text-sm tabular-nums">{cp.myCar}–{cp.oppCar}</div>
+									<div class="font-mono text-[11px] tabular-nums text-slate-400">{cp.ent ? `${(cp.myCar / cp.ent).toFixed(3)} · ${cp.ent} ent.` : '—'}</div>
+								</div>
+							</li>
+						{/each}
+					</ul>
+				</div>
+			{/if}
 			{#if rank15.ids.size}
 				<p class="mb-2 flex items-center gap-1.5 px-1 text-[11px] text-slate-400">
 					<span class="inline-block h-3 w-3 rounded bg-amber-50 ring-1 ring-amber-200"></span>
