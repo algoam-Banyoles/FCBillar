@@ -364,17 +364,17 @@
 		}
 		return out;
 	});
-	// Finestra visible de 15 punts; l'slider la mou en packs de 15.
-	const WIN = 15;
+	// Finestra visible de 25 punts; l'slider mou el punt seleccionat un a un i
+	// la finestra es desplaça en packs de 25 quan el punt en surt.
+	const WIN = 25;
 	const rollMaxStart = $derived(Math.max(0, roll15.length - WIN));
-	let rollStart = $state(0);
 	let rollSel = $state<number | null>(null);
 	$effect(() => {
-		rollStart = rollMaxStart; // per defecte, la finestra més recent
+		rollSel = roll15.length ? roll15.length - 1 : null; // per defecte, el més recent
 	});
-	$effect(() => {
-		rollSel = roll15.length ? Math.min(rollStart + WIN - 1, roll15.length - 1) : null;
-	});
+	const rollStart = $derived(
+		rollSel == null ? 0 : Math.min(Math.floor(rollSel / WIN) * WIN, rollMaxStart)
+	);
 	const rollWin = $derived(roll15.slice(rollStart, rollStart + WIN));
 	const rollChart = $derived.by(() => {
 		if (!rollWin.length) return null;
@@ -754,9 +754,9 @@
 					<span>mín {rollChart.lo.toFixed(3)}</span>
 					<span>màx {rollChart.hi.toFixed(3)}</span>
 				</div>
-				{#if roll15.length > WIN}
-					<input type="range" min="0" max={rollMaxStart} step={WIN} bind:value={rollStart} class="thin-range mt-2 w-full" />
-					<p class="text-center text-[10px] text-slate-400">partides {rollStart + 1}–{Math.min(rollStart + WIN, roll15.length)} de {roll15.length} · packs de {WIN}</p>
+				{#if roll15.length > 1}
+					<input type="range" min="0" max={roll15.length - 1} step="1" bind:value={rollSel} class="thin-range mt-2 w-full" />
+					<p class="text-center text-[10px] text-slate-400">punt {(rollSel ?? 0) + 1} de {roll15.length} · finestra {rollStart + 1}–{Math.min(rollStart + WIN, roll15.length)}</p>
 				{/if}
 			</div>
 		{/if}
