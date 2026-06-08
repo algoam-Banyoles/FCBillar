@@ -399,6 +399,30 @@
 				<p class="mb-2 px-1 text-[11px] text-blue-600">Partides amb la sèrie màxima ({kpi.sm}). Torna a tocar «Sèrie màx» per desfer.</p>
 			{/if}
 
+		{#if currentPos != null}
+			<div class="mb-4 rounded-xl bg-white p-3 ring-1 ring-slate-200">
+				<div class="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Rànquing actual · 15 partides</div>
+				<div class="grid grid-cols-4 gap-2">
+					<div class="text-center">
+						<div class="font-mono text-base font-bold tabular-nums">#{currentPos}</div>
+						<div class="text-[10px] uppercase tracking-wide text-slate-400">posició</div>
+					</div>
+					<div class="text-center">
+						<div class="font-mono text-base font-bold tabular-nums">{lastMitjana != null ? lastMitjana.toFixed(3) : '—'}</div>
+						<div class="text-[10px] uppercase tracking-wide text-slate-400">mitjana</div>
+					</div>
+					<div class="text-center">
+						<div class="font-mono text-base font-bold tabular-nums">{rank15.sm || '—'}</div>
+						<div class="text-[10px] uppercase tracking-wide text-slate-400">S.M.</div>
+					</div>
+					<div class="text-center">
+						<div class="font-mono text-base font-bold tabular-nums {lastMitjana != null && rank15.mitjana > lastMitjana ? 'text-emerald-600' : lastMitjana != null && rank15.mitjana < lastMitjana ? 'text-red-500' : ''}">{rank15.n ? rank15.mitjana.toFixed(3) : '—'}</div>
+						<div class="text-[10px] uppercase tracking-wide text-slate-400">previsió</div>
+					</div>
+				</div>
+			</div>
+		{/if}
+
 		{#if openRank.length}
 			<div class="mb-4 rounded-xl bg-white p-3 ring-1 ring-slate-200">
 				<div class="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Rànquing d'Opens 3 Bandes</div>
@@ -441,30 +465,6 @@
 						</div>
 					{/if}
 				{/each}
-			</div>
-		{/if}
-
-		{#if currentPos != null}
-			<div class="mb-4 rounded-xl bg-white p-3 ring-1 ring-slate-200">
-				<div class="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Rànquing actual · 15 partides</div>
-				<div class="grid grid-cols-4 gap-2">
-					<div class="text-center">
-						<div class="font-mono text-base font-bold tabular-nums">#{currentPos}</div>
-						<div class="text-[10px] uppercase tracking-wide text-slate-400">posició</div>
-					</div>
-					<div class="text-center">
-						<div class="font-mono text-base font-bold tabular-nums">{lastMitjana != null ? lastMitjana.toFixed(3) : '—'}</div>
-						<div class="text-[10px] uppercase tracking-wide text-slate-400">mitjana</div>
-					</div>
-					<div class="text-center">
-						<div class="font-mono text-base font-bold tabular-nums">{rank15.sm || '—'}</div>
-						<div class="text-[10px] uppercase tracking-wide text-slate-400">S.M.</div>
-					</div>
-					<div class="text-center">
-						<div class="font-mono text-base font-bold tabular-nums {lastMitjana != null && rank15.mitjana > lastMitjana ? 'text-emerald-600' : lastMitjana != null && rank15.mitjana < lastMitjana ? 'text-red-500' : ''}">{rank15.n ? rank15.mitjana.toFixed(3) : '—'}</div>
-						<div class="text-[10px] uppercase tracking-wide text-slate-400">previsió</div>
-					</div>
-				</div>
 			</div>
 		{/if}
 
