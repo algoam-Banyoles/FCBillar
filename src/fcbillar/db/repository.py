@@ -453,7 +453,15 @@ class Repository:
             VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(ranking_id, player_id) DO UPDATE SET
                 posicio = excluded.posicio,
-                mitjana_general = excluded.mitjana_general,
+                mitjana_general = CASE
+                    WHEN (
+                        SELECT COUNT(*) FROM ranking_game_links rgl
+                        WHERE rgl.ranking_id = excluded.ranking_id
+                          AND rgl.player_id_origen = excluded.player_id
+                    ) <> excluded.partides
+                    THEN excluded.mitjana_general
+                    ELSE mitjana_general
+                END,
                 mitjana_particular = excluded.mitjana_particular,
                 partides = excluded.partides,
                 extras_json = excluded.extras_json
