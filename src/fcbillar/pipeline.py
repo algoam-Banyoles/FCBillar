@@ -200,6 +200,40 @@ def _partides_url(
     )
 
 
+def _select_last_15_games(games: list[tuple[date, int | None, int | None]]) -> list[int]:
+    """Selecciona els últims 15 games, amb desempat per mitjana si empat de data en frontera 15/16.
+    
+    Args:
+        games: llista de tuples (data, caramboles, entrades) ordenades per data desc.
+    
+    Returns:
+        llista d'índex dels games seleccionats (fins a 15 games).
+    """
+    if len(games) <= 15:
+        return list(range(len(games)))
+    
+    # Si tenim més de 15 i la 15ena (índex 14) i 16ena (índex 15) són del mateix dia,
+    # mantenir la 15ena excepte si la 16ena té millor mitjana.
+    selected_idxs = list(range(15))  # indices 0..14 (15 games)
+    
+    date_15 = games[14][0]
+    date_16 = games[15][0]
+    
+    if date_15 == date_16:
+        # Comparar mitjanes (caramboles/entrades)
+        car_15, ent_15 = games[14][1], games[14][2]
+        car_16, ent_16 = games[15][1], games[15][2]
+        
+        avg_15 = (car_15 / ent_15) if ent_15 else 0
+        avg_16 = (car_16 / ent_16) if ent_16 else 0
+        
+        if avg_16 > avg_15:
+            # Triar la 16ena en comptes de la 15ena
+            selected_idxs[14] = 15
+    
+    return selected_idxs
+
+
 def ingest_partides(
     client: ScraperClient,
     num_seq: int,
@@ -250,6 +284,11 @@ def ingest_partides(
     skipped = 0
     links = 0
     new = 0
+    
+    # Primera passa: construir games i upsertarlos.
+    # Recopilarem (data, caramboles_del_jugador, entrades) per filtrar darrers 15.
+    games_info: list[tuple[date, Game, int | None, int | None]] = []
+    
     for row in parsed.rows:
         game = _build_game_from_raw_row(
             row, modalitat_codi_fcb, owner_nom, repo,
@@ -262,15 +301,33 @@ def ingest_partides(
             new += 1
         repo.upsert_game(game)
         upserted += 1
-        repo.link_game_to_ranking(
-            RankingGameLink(
-                ranking_num_seq=num_seq,
-                ranking_modalitat=modalitat_codi_fcb,
-                game_id=game.id_natural,
-                player_fcb_id_origen=player_fcb_id,
-            )
-        )
-        links += 1
+        
+        # Obtenim els caramboles del jugador consultat.
+        if game.player1_fcb_id == player_fcb_id:
+            car_jugador = game.caramboles1
+        else:
+            car_jugador = game.caramboles2
+        
+        games_info.append((game.data_partida, game, car_jugador, game.entrades))
+    
+    # Segona passa: seleccionar darrers 15 games i crear links.
+    if games_info:
+        # Preparar llista de (data, caramboles, entrades) per al filtre.
+        game_stats = [(g[0], g[2], g[3]) for g in games_info]
+        selected_idxs = _select_last_15_games(game_stats)
+        
+        for idx in selected_idxs:
+            if idx < len(games_info):
+                _, game, _, _ = games_info[idx]
+                repo.link_game_to_ranking(
+                    RankingGameLink(
+                        ranking_num_seq=num_seq,
+                        ranking_modalitat=modalitat_codi_fcb,
+                        game_id=game.id_natural,
+                        player_fcb_id_origen=player_fcb_id,
+                    )
+                )
+                links += 1
 
     log.info(
         "Partides %s/%s/%s: %d desades, %d saltades (contraris no a BD), %d links",
