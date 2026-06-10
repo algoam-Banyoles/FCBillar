@@ -20,6 +20,7 @@
 			nom: string;
 			categoria: string | null;
 			modalitat: number | null;
+			tipus: 'campionat' | 'open' | 'torneig';
 			temporada: string;
 			posicio: number;
 			club: string | null;
@@ -66,6 +67,7 @@
 				nom: string;
 				categoria: string | null;
 				modalitat: number | null;
+				tipus: 'campionat' | 'open' | 'torneig';
 				temporada: string;
 				posicio: number;
 				club: string | null;
@@ -196,7 +198,6 @@
 					const rawNom = o?.nom.trim() ?? '';
 					const isOpen = rawNom.toUpperCase().includes('OPEN');
 					const parts = rawNom.split(/\s+-\s+/);
-					const categoria = !isOpen ? (parts.length > 1 ? parts.pop()! : 'ÚNICA') : null;
 					const upperNom = rawNom.toUpperCase();
 					const modalitat = upperNom.includes('QUADRE 71/2')
 						? 6
@@ -211,14 +212,43 @@
 									: ['SNOOKER', 'QUILLES', 'ARTISTIC', 'BIATHL'].some((x) => upperNom.includes(x))
 										? null
 										: 1;
+					const modalityOnly =
+						/^(?:CAMPIONAT CATALUNYA\s+|ABSOLUT\s+)?(?:TRES BANDES|3 BANDES|LLIURE|BANDA|QUADRE 47\/2|QUADRE 71\/2)(?:\s+CATALUNYA)?$/i;
+					const championshipCategory =
+						parts.length > 1
+							? parts.at(-1)!
+							: /\bFEMEN[IÍ]\b/i.test(rawNom)
+								? 'FEMENÍ'
+								: /\bJUNIOR\b/i.test(rawNom)
+									? 'JUNIOR'
+									: /\bABSOLUT\b/i.test(rawNom)
+										? 'ABSOLUT'
+										: 'ÚNICA';
+					const isChampionship =
+						!isOpen &&
+						(modalityOnly.test(rawNom) ||
+							/CAMPIONAT\s+CATALUNYA|CATALUNYA|^(?:TRES BANDES|3 BANDES|LLIURE|BANDA|QUADRE 47\/2|QUADRE 71\/2)\s+-/i.test(
+								rawNom
+							) ||
+							/\b(?:TRES BANDES|3 BANDES|LLIURE|BANDA|QUADRE 47\/2|QUADRE 71\/2)\s+(?:FEMEN[IÍ]|JUNIOR)\b/i.test(
+								rawNom
+							));
+					const categoria = isChampionship ? championshipCategory : !isOpen && parts.length > 1 ? parts.at(-1)! : null;
+					const tipus = isOpen ? 'open' : isChampionship ? 'campionat' : 'torneig';
 					return o
 						? {
 								openId: p.open_id,
-								nom: isOpen
-									? rawNom.replace(/\s*-\s*[ÚU]NICA\s*$/i, '').trim()
-									: parts.join(' - ').trim(),
+								nom:
+									tipus === 'campionat'
+										? 'Campionat de Catalunya'
+										: isOpen
+											? rawNom.replace(/\s*-\s*[ÚU]NICA\s*$/i, '').trim()
+											: parts.length > 1
+												? parts.slice(0, -1).join(' - ').trim()
+												: rawNom,
 								categoria,
 								modalitat,
+								tipus,
 								temporada: o.temporada ?? '',
 								posicio: p.posicio,
 								club: p.club
@@ -754,10 +784,13 @@
 							<div class="mb-1 text-[11px] font-semibold text-slate-500">{season.temporada}</div>
 							<ul class="space-y-1">
 								{#each season.entries as p}
-									<li class="flex items-center gap-2 text-sm">
+									<li class="flex items-center gap-2 rounded-lg px-1.5 py-1 text-sm {p.tipus === 'campionat' ? 'bg-blue-50 ring-1 ring-blue-100' : ''}">
 										<span class="w-6 shrink-0 text-center font-mono font-bold {p.posicio === 1 ? 'text-amber-500' : p.posicio === 2 ? 'text-slate-400' : 'text-orange-700'}">{ordinal(p.posicio)}</span>
 										<div class="min-w-0 flex-1">
-											<a href="/opens/{p.openId}" class="block truncate font-medium active:underline">{p.nom}</a>
+											<div class="mb-0.5 flex items-center gap-1.5">
+												<span class="shrink-0 rounded px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide {p.tipus === 'campionat' ? 'bg-blue-600 text-white' : p.tipus === 'open' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}">{p.tipus === 'campionat' ? 'Camp. Catalunya' : p.tipus === 'open' ? 'Open' : 'Torneig'}</span>
+												<a href="/opens/{p.openId}" class="min-w-0 truncate font-medium active:underline">{p.nom}</a>
+											</div>
 											{#if p.categoria}<div class="truncate text-[10px] uppercase tracking-wide text-slate-400">Categoria · {p.categoria}</div>{/if}
 										</div>
 										{#if p.club}<span class="max-w-24 shrink-0 truncate text-[10px] text-slate-400">{p.club}</span>{/if}
@@ -963,7 +996,7 @@
 			</div>
 			<div class="min-w-0">
 			<!-- Partides recents -->
-			{#if copaPend.length}
+			{#if selMod === 1 && copaPend.length}
 				<div class="mb-3 rounded-xl border border-blue-200 bg-blue-50 p-3">
 					<div class="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-blue-700">
 						Recents · incloses a la previsió del proper rànquing
