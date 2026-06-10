@@ -1,93 +1,118 @@
-"""Calcula rècords històrics i els publica a fcbillar.records.
+"""Calcula rècords per modalitat i els publica a fcbillar.records.
 
-La modalitat autèntica d'una partida és la del rànquing enllaçat
-(ranking_game_links), no el modalitat_codi (que pot estar mal posat en
-duplicats de l'scrape de competició). Els rècords de joc filtren per
-partides enllaçades a un rànquing de 3 bandes.
+5 KPIs × 5 modalitats. Les dades de joc (sèrie, mitjana de partida, partides)
+es prenen dels games del NÚVOL (que ja tenen la sèrie enriquida d'opens/copa);
+la mitjana al rànquing i els títols, de la BD local.
 """
 
 from __future__ import annotations
 
+import collections
 import sqlite3
 
-from fcbillar.cloud_sync import _upsert, get_client
+import httpx
+
+from fcbillar.cloud_sync import _env, _upsert, get_client
 from fcbillar.config import get_settings
 
-# Partides genuïnament de 3 bandes: enllaçades a un rànquing de 3 bandes.
-G3B = (
-    "games g JOIN ranking_game_links rgl ON rgl.game_id=g.id "
-    "JOIN rankings rk ON rk.id=rgl.ranking_id JOIN modalitats m ON m.id=rk.modalitat_id "
-    "AND m.codi_fcb=1"
-)
-NO3B = (
-    "AND UPPER(ti.nom) NOT LIKE '%FEMENI%' AND UPPER(ti.nom) NOT LIKE '%QUADRE%' "
-    "AND UPPER(ti.nom) NOT LIKE '%LLIURE%' AND UPPER(ti.nom) NOT LIKE '%BANDA %'"
-)
+MODS = [(1, "Tres Bandes"), (2, "Lliure"), (3, "Quadre 47/2"), (4, "Banda"), (6, "Quadre 71/2")]
+
+
+def fetch_cloud_games():
+    url, anon = _env("SUPABASE_URL"), _env("PUBLIC_SUPABASE_ANON_KEY")
+    h = {"apikey": anon, "Accept-Profile": "fcbillar"}
+    cols = ("modalitat_codi,player1_fcb_id,player1_nom,caramboles1,serie_max1,"
+            "player2_fcb_id,player2_nom,caramboles2,serie_max2,entrades")
+    out = []
+    for frm in range(0, 80000, 1000):
+        r = httpx.get(f"{url}/rest/v1/games", params={"select": cols},
+                      headers={**h, "Range": f"{frm}-{frm + 999}"}, timeout=40)
+        d = r.json()
+        if not d:
+            break
+        out.extend(d)
+        if len(d) < 1000:
+            break
+    return out
 
 
 def main() -> None:
     s = get_settings()
     conn = sqlite3.connect(str(s.db_path))
     conn.row_factory = sqlite3.Row
+    games = fetch_cloud_games()
     rows = []
 
-    def add(cat, q, fmt, lim=5):
-        for i, r in enumerate(conn.execute(q), start=1):
-            if i > lim:
-                break
-            rows.append({
-                "categoria": cat, "ordre": i, "player_fcb_id": r["fcb"],
-                "jugador": r["nom"], "valor": fmt(r), "detall": None,
-            })
+    def push(cat, ranking, fmt):
+        for i, (fcb, nom, val) in enumerate(ranking[:5], start=1):
+            rows.append({"categoria": cat, "ordre": i, "player_fcb_id": fcb,
+                         "jugador": nom, "valor": fmt(val), "detall": None})
 
-    add(
-        "Millor mitjana al rànquing (3B)",
-        """SELECT p.fcb_id fcb, p.nom, MAX(re.mitjana_general) v
-        FROM ranking_entries re JOIN rankings rk ON rk.id=re.ranking_id
-        JOIN modalitats m ON m.id=rk.modalitat_id JOIN players p ON p.id=re.player_id
-        WHERE m.codi_fcb=1 AND p.fcb_id NOT LIKE 'name:%'
-        GROUP BY p.id HAVING COUNT(*) >= 5 ORDER BY v DESC LIMIT 5""",
-        lambda r: f"{r['v']:.3f}",
-    )
-    add(
-        "Millor mitjana en una partida (3B)",
-        f"""SELECT p.fcb_id fcb, p.nom, MAX(CAST(x.car AS REAL)/x.ent) v FROM (
-            SELECT DISTINCT g.id gid, g.player1_id pid, g.caramboles1 car, g.entrades ent FROM {G3B} WHERE g.entrades>=15 AND g.caramboles1 IS NOT NULL
-            UNION SELECT DISTINCT g.id, g.player2_id, g.caramboles2, g.entrades FROM {G3B} WHERE g.entrades>=15 AND g.caramboles2 IS NOT NULL
-        ) x JOIN players p ON p.id=x.pid WHERE p.fcb_id NOT LIKE 'name:%' GROUP BY p.id ORDER BY v DESC LIMIT 5""",
-        lambda r: f"{r['v']:.3f}",
-    )
-    add(
-        "Millor sèrie (3B)",
-        f"""SELECT p.fcb_id fcb, p.nom, MAX(x.s) v FROM (
-            SELECT DISTINCT g.id gid, g.player1_id pid, g.serie_max1 s FROM {G3B} WHERE g.serie_max1 IS NOT NULL AND g.serie_max1 <= 20
-            UNION SELECT DISTINCT g.id, g.player2_id, g.serie_max2 FROM {G3B} WHERE g.serie_max2 IS NOT NULL AND g.serie_max2 <= 20
-        ) x JOIN players p ON p.id=x.pid WHERE p.fcb_id NOT LIKE 'name:%' GROUP BY p.id ORDER BY v DESC LIMIT 5""",
-        lambda r: str(r["v"]),
-    )
-    add(
-        "Més partides (3B)",
-        f"""SELECT p.fcb_id fcb, p.nom, COUNT(*) v FROM (
-            SELECT DISTINCT g.id gid, g.player1_id pid FROM {G3B}
-            UNION SELECT DISTINCT g.id, g.player2_id FROM {G3B}
-        ) x JOIN players p ON p.id=x.pid WHERE p.fcb_id NOT LIKE 'name:%' GROUP BY p.id ORDER BY v DESC LIMIT 5""",
-        lambda r: str(r["v"]),
-    )
-    add(
-        "Opens guanyats (3B)",
-        f"""SELECT p.fcb_id fcb, p.nom, COUNT(*) v
-        FROM torneig_participants tp JOIN torneigs_individuals ti ON ti.id=tp.torneig_id
-        JOIN players p ON p.id=tp.player_id
-        WHERE tp.posicio=1 AND UPPER(ti.nom) LIKE '%OPEN%' {NO3B} AND p.fcb_id NOT LIKE 'name:%'
-        GROUP BY p.id ORDER BY v DESC LIMIT 5""",
-        lambda r: str(r["v"]),
-    )
+    for codi, mnom in MODS:
+        # ---- KPIs de joc (núvol): mitjana de partida, sèrie major, més partides ----
+        n = collections.Counter()
+        best_avg: dict = {}
+        best_ser: dict = {}
+        noms: dict = {}
+        for g in games:
+            if g["modalitat_codi"] != codi:
+                continue
+            ent = g["entrades"]
+            for side in (1, 2):
+                fcb = g[f"player{side}_fcb_id"]
+                if not fcb or fcb.startswith("name:"):
+                    continue
+                noms[fcb] = g[f"player{side}_nom"]
+                n[fcb] += 1
+                car, ser = g[f"caramboles{side}"], g[f"serie_max{side}"]
+                if ent and ent >= 10 and car is not None:
+                    best_avg[fcb] = max(best_avg.get(fcb, 0.0), car / ent)
+                if ser is not None:
+                    best_ser[fcb] = max(best_ser.get(fcb, 0), ser)
+
+        push(f"{mnom} · Mitjana partida",
+             sorted(((f, noms[f], v) for f, v in best_avg.items()), key=lambda x: -x[2]),
+             lambda v: f"{v:.3f}")
+        push(f"{mnom} · Sèrie major",
+             sorted(((f, noms[f], v) for f, v in best_ser.items()), key=lambda x: -x[2]),
+             lambda v: str(v))
+        push(f"{mnom} · Més partides",
+             sorted(((f, noms[f], v) for f, v in n.items()), key=lambda x: -x[2]),
+             lambda v: str(v))
+
+        # ---- Mitjana al rànquing (local) ----
+        rk = [
+            (r["fcb"], r["nom"], r["v"])
+            for r in conn.execute(
+                """SELECT p.fcb_id fcb, p.nom, MAX(re.mitjana_general) v
+                   FROM ranking_entries re JOIN rankings rk ON rk.id=re.ranking_id
+                   JOIN modalitats m ON m.id=rk.modalitat_id JOIN players p ON p.id=re.player_id
+                   WHERE m.codi_fcb=? AND p.fcb_id NOT LIKE 'name:%'
+                   GROUP BY p.id HAVING COUNT(*)>=5 ORDER BY v DESC LIMIT 5""",
+                (codi,),
+            )
+        ]
+        push(f"{mnom} · Mitjana rànquing", rk, lambda v: f"{v:.3f}")
+
+        # ---- Títols (1rs llocs en competicions individuals d'aquesta modalitat) ----
+        ti = [
+            (r["fcb"], r["nom"], r["v"])
+            for r in conn.execute(
+                """SELECT p.fcb_id fcb, p.nom, COUNT(*) v
+                   FROM torneig_participants tp JOIN torneigs_individuals t ON t.id=tp.torneig_id
+                   JOIN modalitats m ON m.id=t.modalitat_id JOIN players p ON p.id=tp.player_id
+                   WHERE tp.posicio=1 AND m.codi_fcb=? AND p.fcb_id NOT LIKE 'name:%'
+                   GROUP BY p.id ORDER BY v DESC LIMIT 5""",
+                (codi,),
+            )
+        ]
+        push(f"{mnom} · Títols", ti, lambda v: str(v))
+
     conn.close()
-
     sb = get_client()
     sb.table("records").delete().neq("categoria", "").execute()
-    n = _upsert(sb, "records", rows, "categoria,ordre", lambda l, m: None)
-    print(f"records: {n} ({len(set(r['categoria'] for r in rows))} categories)")
+    nrec = _upsert(sb, "records", rows, "categoria,ordre", lambda l, m: None)
+    print(f"records: {nrec} ({len(set(r['categoria'] for r in rows))} categories)")
 
 
 if __name__ == "__main__":

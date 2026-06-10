@@ -5,6 +5,7 @@
 	type Rec = { categoria: string; ordre: number; player_fcb_id: string | null; jugador: string; valor: string };
 	let recs = $state<Rec[]>([]);
 	let loading = $state(true);
+	let selMod = $state('');
 
 	onMount(async () => {
 		const { data } = await supabase
@@ -16,7 +17,19 @@
 		loading = false;
 	});
 
-	const cats = $derived([...new Set(recs.map((r) => r.categoria))]);
+	const ORDER = ['Tres Bandes', 'Lliure', 'Banda', 'Quadre 47/2', 'Quadre 71/2'];
+	const mods = $derived(
+		[...new Set(recs.map((r) => r.categoria.split(' · ')[0]))].sort(
+			(a, b) => (ORDER.indexOf(a) + 1 || 99) - (ORDER.indexOf(b) + 1 || 99)
+		)
+	);
+	$effect(() => {
+		if (!selMod && mods.length) selMod = mods[0];
+	});
+	const cats = $derived([
+		...new Set(recs.filter((r) => r.categoria.startsWith(selMod + ' ·')).map((r) => r.categoria))
+	]);
+	const shortCat = (c: string) => c.split(' · ')[1] ?? c;
 </script>
 
 <h1 class="mb-3 text-lg font-bold">Rècords</h1>
@@ -24,11 +37,21 @@
 {#if loading}
 	<p class="py-6 text-center text-sm text-slate-400">Carregant…</p>
 {:else}
+	<div class="-mx-3 mb-3 flex gap-1.5 overflow-x-auto px-3 pb-1 [scrollbar-width:none]">
+		{#each mods as m}
+			<button
+				onclick={() => (selMod = m)}
+				class="shrink-0 rounded-full px-3 py-1.5 text-sm font-medium {selMod === m
+					? 'bg-slate-900 text-white'
+					: 'bg-slate-100 text-slate-500'}">{m}</button>
+		{/each}
+	</div>
+
 	<div class="space-y-4 lg:grid lg:grid-cols-2 lg:gap-4 lg:space-y-0">
 		{#each cats as cat}
 			<div class="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
 				<div class="border-b border-slate-100 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-					{cat}
+					{shortCat(cat)}
 				</div>
 				<ul>
 					{#each recs.filter((r) => r.categoria === cat) as r (r.ordre)}

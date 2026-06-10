@@ -232,6 +232,28 @@ def publish_games(
         y, mo = int(ds[:4]), int(ds[5:7])
         return f"{y}-{y + 1}" if mo >= 8 else f"{y - 1}-{y}"
 
+    _MODNM = {1: "Tres Bandes", 2: "Lliure", 3: "Quadre 47/2", 4: "Banda", 6: "Quadre 71/2"}
+    _CHMODS = ("TRES BANDES", "3 BANDES", "BANDA", "LLIURE", "QUADRE 47/2", "QUADRE 71/2", "QUADRE")
+
+    def _norm_label(label, modc):
+        """Unifica etiquetes equivalents (campionats de Catalunya, variants 3B)."""
+        if not label or label == "INDIVIDUAL" or label.startswith("Lliga") or label == "COPA":
+            return label
+        u = label.upper()
+        # Opens i altres torneigs propis: només normalitzar "3 BANDES" -> "TRES BANDES".
+        if any(k in u for k in ("OPEN", "MEMORIAL", "CIUTAT", "TROFEU", "PROVINCIAL")):
+            return label.replace("3 BANDES", "TRES BANDES").replace("3 Bandes", "Tres Bandes")
+        # Campionat de Catalunya (per modalitat): unifica totes les variants.
+        mn = _MODNM.get(modc)
+        if mn and (
+            "CAMPIONAT" in u
+            or "ABSOLUT" in u
+            or "CATALUNYA" in u
+            or any(u == m or u.startswith(m + " ") or u.startswith(m + "-") for m in _CHMODS)
+        ):
+            return f"Camp. Catalunya {mn}"
+        return label.replace("3 BANDES", "TRES BANDES")
+
     def enrich(r):
         """Retorna (etiqueta_competicio, serie1, serie2) enriquint des d'opens/copa."""
         comp, lliga_id = r["competicio"], r["lliga_id"]
@@ -285,7 +307,7 @@ def publish_games(
             s1 = None
         if s2 is not None and ((r["caramboles2"] is not None and s2 > r["caramboles2"]) or (cap and s2 > cap)):
             s2 = None
-        return label, s1, s2
+        return _norm_label(label, r["modalitat_codi"]), s1, s2
 
     games = []
     for r in conn.execute(
