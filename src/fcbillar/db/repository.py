@@ -544,34 +544,40 @@ class Repository:
         )
         return game.id_natural
 
-    def enrich_game_by_signature(self, game: Game) -> bool:
+    def enrich_game_by_signature(self, game: Game, season_range: tuple[str, str] | None = None) -> bool:
         """Enriqueix un game EXISTENT (de partideshome) amb context de competició.
 
-        Cerca per signatura física (jugadors + data + caramboles + entrades),
+        Cerca per signatura física (jugadors + caramboles + entrades),
         independentment de la modalitat — la modalitat l'estableix només
-        partideshome i NO s'ha de tocar mai. Assigna encontre/equips/temporada.
-        No crea cap game: si no existeix, retorna False (la partida només compta
-        si ve d'un rànquing). Tampoc toca modalitat ni caramboles/entrades.
+        partideshome i NO s'ha de tocar mai. Assigna encontre/equips/temporada/sèrie.
+        No crea cap game: si no existeix, retorna False.
+
+        Si el game porta data, casa per data exacta. Si no (pàgines històriques de
+        lliga, que no en porten), casa dins del rang de dates de la temporada
+        (season_range = (data_min, data_max)) per evitar col·lisions.
         """
         p1 = self.get_player_id_by_fcb_id(game.player1_fcb_id)
         p2 = self.get_player_id_by_fcb_id(game.player2_fcb_id)
         if p1 is None or p2 is None:
             return False
-        d = game.data_partida.isoformat()
-        row = self.conn.execute(
-            """
-            SELECT id, player1_id FROM games
-            WHERE data_partida = ? AND entrades IS ?
-              AND ((player1_id=? AND player2_id=? AND caramboles1 IS ? AND caramboles2 IS ?)
-                OR (player1_id=? AND player2_id=? AND caramboles1 IS ? AND caramboles2 IS ?))
-            LIMIT 1
-            """,
-            (
-                d, game.entrades,
-                p1, p2, game.caramboles1, game.caramboles2,
-                p2, p1, game.caramboles2, game.caramboles1,
-            ),
-        ).fetchone()
+        players = (
+            "((player1_id=? AND player2_id=? AND caramboles1 IS ? AND caramboles2 IS ?) "
+            "OR (player1_id=? AND player2_id=? AND caramboles1 IS ? AND caramboles2 IS ?))"
+        )
+        pargs = (p1, p2, game.caramboles1, game.caramboles2, p2, p1, game.caramboles2, game.caramboles1)
+        if game.data_partida is not None:
+            row = self.conn.execute(
+                f"SELECT id, player1_id FROM games WHERE data_partida=? AND entrades IS ? AND {players} LIMIT 1",
+                (game.data_partida.isoformat(), game.entrades, *pargs),
+            ).fetchone()
+        elif season_range is not None:
+            row = self.conn.execute(
+                f"SELECT id, player1_id FROM games WHERE data_partida BETWEEN ? AND ? "
+                f"AND entrades IS ? AND {players} LIMIT 1",
+                (season_range[0], season_range[1], game.entrades, *pargs),
+            ).fetchone()
+        else:
+            return False
         if row is None:
             return False
         swapped = row["player1_id"] == p2 and p1 != p2
