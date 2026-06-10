@@ -22,6 +22,7 @@ data/fcbillar.db-wal
 data/fcbillar.db-shm
 data/cache/
 data/exports/
+data/*.db
 
 # Logs
 logs/
