@@ -6,6 +6,21 @@ from datetime import date
 import pytest
 
 from fcbillar.models import Game, Player, Ranking, RankingEntry, RankingGameLink
+import sqlite3
+from pathlib import Path
+
+from fcbillar.db.repository import Repository
+
+SCHEMA_PATH = Path(__file__).resolve().parents[1] / "src" / "fcbillar" / "db" / "schema.sql"
+
+
+@pytest.fixture
+def repo() -> Repository:
+    conn = sqlite3.connect(":memory:", isolation_level=None)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+    return Repository(conn)
 
 
 def test_mitjana_update_only_with_new_games(repo) -> None:
