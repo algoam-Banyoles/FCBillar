@@ -104,7 +104,9 @@ export interface PlayerRankRow {
 export interface Open {
 	open_id: number;
 	nom: string;
+	tipus: 'open' | 'campionat' | null;
 	temporada_id: number | null;
+	temporada?: string | null;
 }
 export interface OpenClassification {
 	open_id: number;

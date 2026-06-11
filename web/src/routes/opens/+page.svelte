@@ -34,7 +34,10 @@
 	function norm(s: string): string {
 		return s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 	}
-	const isOpen = (nom: string) => nom.toUpperCase().includes('OPEN');
+	// Tipus de torneig: prioritza el camp publicat des de Python; si encara és null
+	// (dada no republicada), recau en l'heurística antiga de nom.
+	const tipusOf = (o: Open) =>
+		o.tipus ?? (o.nom.toUpperCase().includes('OPEN') ? 'open' : 'campionat');
 	const clean = (nom: string) => nom.replace(/\s*-\s*[ÚU]NICA\s*$/i, '').trim();
 
 	onMount(async () => {
@@ -64,7 +67,7 @@
 
 	const filtered = $derived(
 		opens
-			.filter((o) => isOpen(o.nom))
+			.filter((o) => tipusOf(o) === 'open')
 			.filter((o) => !season || (o as any).temporada === season)
 			.filter((o) => (q.trim() ? norm(o.nom).includes(norm(q.trim())) : true))
 	);

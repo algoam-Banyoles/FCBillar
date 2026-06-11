@@ -13,6 +13,7 @@ import sqlite3
 from fcbillar.config import get_settings
 from fcbillar.scraper.client import ScraperClient
 from fcbillar.scraper.parsers import parse_individuals_divisions
+from fcbillar.torneig_naming import clean_torneig_nom
 
 
 def main() -> None:
@@ -54,7 +55,8 @@ def main() -> None:
                     continue
                 old_name = row["nom"].strip()
                 base_name = old_name.split(" - ", 1)[0].strip()
-                new_name = base_name if category in {"UNICA", "ÚNICA"} else f"{base_name} - {category}"
+                raw_name = base_name if category in {"UNICA", "ÚNICA"} else f"{base_name} - {category}"
+                new_name = clean_torneig_nom(raw_name)
                 if new_name != old_name:
                     conn.execute(
                         "UPDATE torneigs_individuals SET nom=? WHERE id=?",

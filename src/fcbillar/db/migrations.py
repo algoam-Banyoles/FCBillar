@@ -18,6 +18,10 @@ Versions:
 - 8: composició de grups de les fases d'individuals (torneig_fase_grups). El
      portal no publica classificacions amb punts per fase, només l'assignació
      jugador→grup. S'elimina la taula buida torneig_fase_classif del v7.
+- 9: atribució de partides individuals al campionat concret — columnes
+     games.torneig_id / torneig_fase_id / torneig_link_method, i formalització
+     de la taula torneig_partides (resultats reals dels campionats). El vincle
+     es calcula a linking.py creuant torneig_partides amb games.
 """
 
 from __future__ import annotations
@@ -29,7 +33,7 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 
 def _read_schema_sql() -> str:
@@ -68,6 +72,23 @@ def _migrate_v1_to_v2(conn: sqlite3.Connection) -> None:
             log.info("v1→v2: afegida columna games.%s", col_name)
 
 
+_V9_NEW_COLUMNS_GAMES = [
+    ("torneig_id", "INTEGER REFERENCES torneigs_individuals(id) ON DELETE SET NULL"),
+    ("torneig_fase_id", "INTEGER"),
+    ("torneig_link_method", "TEXT"),
+]
+
+
+def _migrate_to_v9(conn: sqlite3.Connection) -> None:
+    """Afegeix les columnes d'atribució de campionat a `games`. La taula
+    torneig_partides (CREATE TABLE IF NOT EXISTS) la crea l'executescript."""
+    existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(games)").fetchall()}
+    for col_name, col_def in _V9_NEW_COLUMNS_GAMES:
+        if col_name not in existing_cols:
+            conn.execute(f"ALTER TABLE games ADD COLUMN {col_name} {col_def}")
+            log.info("→v9: afegida columna games.%s", col_name)
+
+
 def ensure_schema(db_path: Path) -> sqlite3.Connection:
     conn = connect(db_path)
     version = current_version(conn)
@@ -81,6 +102,10 @@ def ensure_schema(db_path: Path) -> sqlite3.Connection:
     # torneig_fase_grups. La fem fora; executescript crearà la nova.
     if version == 7:
         conn.execute("DROP TABLE IF EXISTS torneig_fase_classif")
+    # → v9: columnes d'atribució de campionat a games (només BDs ja existents;
+    # per a BDs noves les crea directament el schema.sql via executescript).
+    if 1 <= version < 9:
+        _migrate_to_v9(conn)
     # v2 → v3 no necessita ALTER (només afegeix taula nova que crearà
     # executescript via CREATE TABLE IF NOT EXISTS).
     # v3 → v4 tampoc (afegeix torneigs_individuals + torneig_participants).

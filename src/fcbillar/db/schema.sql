@@ -170,13 +170,22 @@ CREATE TABLE IF NOT EXISTS games (
     arbitre                 TEXT,
     assistencia             TEXT,
     extras_json             TEXT,
-    created_at              TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at              TEXT NOT NULL DEFAULT (datetime('now')),
+    -- v9: atribució d'una partida individual al campionat (torneig) concret.
+    -- competicio_id només dona la categoria genèrica ('INDIVIDUAL'); aquí desem
+    -- l'enllaç precís al torneig + fase, derivat de creuar `torneig_partides`
+    -- (partides reals scrapejades dels campionats) amb aquesta partida del
+    -- rànquing per (modalitat + parella + caramboles + entrades). Vegeu linking.py.
+    torneig_id              INTEGER REFERENCES torneigs_individuals(id) ON DELETE SET NULL,
+    torneig_fase_id         INTEGER,            -- fase_id extern (pàgina del portal)
+    torneig_link_method     TEXT                -- 'exacte' | (futur: 'participacio')
 );
 CREATE INDEX IF NOT EXISTS ix_games_data ON games(data_partida);
 CREATE INDEX IF NOT EXISTS ix_games_p1 ON games(player1_id);
 CREATE INDEX IF NOT EXISTS ix_games_p2 ON games(player2_id);
 CREATE INDEX IF NOT EXISTS ix_games_modalitat ON games(modalitat_id);
 CREATE INDEX IF NOT EXISTS ix_games_competicio ON games(competicio_id);
+CREATE INDEX IF NOT EXISTS ix_games_torneig ON games(torneig_id);
 
 CREATE TABLE IF NOT EXISTS ranking_game_links (
     ranking_id              INTEGER NOT NULL REFERENCES rankings(id) ON DELETE CASCADE,
@@ -297,3 +306,28 @@ CREATE TABLE IF NOT EXISTS torneig_fase_grups (
     ordre        INTEGER
 );
 CREATE INDEX IF NOT EXISTS ix_tfg_fase ON torneig_fase_grups(fase_id);
+
+-- v9: Partides reals (resultats) dels campionats individuals, scrapejades de les
+-- pàgines `/individuals/partidesgrups/...` i `/individuals/partideseliminatoria/...`
+-- (i les variants històriques). NO porten data: la data ve de creuar-les amb les
+-- partides del rànquing (taula `games`). `fase_id` és l'id extern de la pàgina del
+-- portal. Poblada per scripts/ingest_open_games.py; consumida pel linker (linking.py)
+-- per omplir games.torneig_id. Identitat lògica: (torneig, divisió, fase, jugadors,
+-- caramboles, entrades) — no s'hi posa PRIMARY KEY perquè el portal pot repetir el
+-- mateix enfrontament en fases diferents.
+CREATE TABLE IF NOT EXISTS torneig_partides (
+    torneig_id_extern  INTEGER,
+    divisio_id_extern  INTEGER,
+    fase_id            INTEGER,
+    player1_nom        TEXT,
+    caramboles1        INTEGER,
+    serie1             INTEGER,
+    punts1             INTEGER,
+    player2_nom        TEXT,
+    caramboles2        INTEGER,
+    serie2             INTEGER,
+    punts2             INTEGER,
+    entrades           INTEGER
+);
+CREATE INDEX IF NOT EXISTS ix_torneig_partides_div
+    ON torneig_partides(torneig_id_extern, divisio_id_extern);

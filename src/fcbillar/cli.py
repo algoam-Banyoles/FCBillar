@@ -619,6 +619,80 @@ def ingest_individuals_cmd(
     )
 
 
+@app.command("link-individuals")
+def link_individuals_cmd() -> None:
+    """Vincula les partides INDIVIDUAL del rànquing amb el campionat concret.
+
+    Creua `games` amb `torneig_partides` (resultats reals dels campionats) per
+    (modalitat + parella + caramboles + entrades) i omple games.torneig_id.
+    Idempotent: recalcula els vincles 'exacte' des de zero.
+    """
+    from fcbillar.linking import coverage_by_season, link_individual_games
+
+    settings = get_settings()
+    conn = ensure_schema(settings.db_path)
+    res = link_individual_games(conn)
+    conn.commit()
+
+    console.print(
+        f"[green]OK vinculació:[/] {res.linked_games} partides del rànquing vinculades "
+        f"des de {res.matched_partides}/{res.torneig_partides} partides de campionat."
+    )
+    console.print(
+        f"  no casa cap game: {res.no_game}  ·  ambigües: {res.ambiguous}  ·  "
+        f"noms no resolts: {res.unresolved_players}  ·  torneig desconegut: {res.unknown_torneig}"
+        f"  ·  conflictes: {res.conflicts}"
+    )
+    if res.conflict_samples:
+        console.print(f"  [yellow]mostres de conflicte (game→torneig):[/] {res.conflict_samples[:5]}")
+
+    table = Table(title="Cobertura partides INDIVIDUAL per temporada")
+    table.add_column("Temporada")
+    table.add_column("Vinculades", justify="right")
+    table.add_column("Total", justify="right")
+    table.add_column("%", justify="right")
+    tot = lnk = 0
+    for row in coverage_by_season(conn):
+        tot += row.total
+        lnk += row.linked
+        table.add_row(row.season or "—", str(row.linked), str(row.total), f"{row.pct}%")
+    pct = round(100 * lnk / tot) if tot else 0
+    table.add_row("[b]TOTAL[/]", f"[b]{lnk}[/]", f"[b]{tot}[/]", f"[b]{pct}%[/]")
+    console.print(table)
+    conn.close()
+
+
+@app.command("clean-torneig-noms")
+def clean_torneig_noms_cmd(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Mostra els canvis sense desar-los"),
+) -> None:
+    """Neteja els noms dels torneigs individuals (treu sufix redundant i '- ÚNICA').
+
+    Una sola passada sobre torneigs_individuals; idempotent. El tipus (open/
+    campionat) NO es desa localment: es deriva del nom net a la publicació.
+    """
+    from fcbillar.torneig_naming import clean_torneig_nom, torneig_tipus
+
+    settings = get_settings()
+    conn = ensure_schema(settings.db_path)
+    rows = conn.execute("SELECT id, nom FROM torneigs_individuals").fetchall()
+    changes = [(r["id"], r["nom"], clean_torneig_nom(r["nom"])) for r in rows]
+    changes = [(i, old, new) for (i, old, new) in changes if new != old]
+
+    for _id, old, new in changes:
+        console.print(f"  [yellow]{old}[/] → [green]{new}[/]")
+    if not dry_run:
+        conn.executemany("UPDATE torneigs_individuals SET nom=? WHERE id=?",
+                         [(new, i) for (i, _o, new) in changes])
+        conn.commit()
+    n_open = sum(1 for r in rows if torneig_tipus(r["nom"]) == "open")
+    console.print(
+        f"[green]{'(dry-run) ' if dry_run else ''}noms netejats: {len(changes)}[/] "
+        f"· tipus: {n_open} opens / {len(rows) - n_open} campionats"
+    )
+    conn.close()
+
+
 @app.command("publish-cloud")
 def publish_cloud_cmd() -> None:
     """Publica la BD local a Supabase (schema fcbillar) per al frontend de Vercel.

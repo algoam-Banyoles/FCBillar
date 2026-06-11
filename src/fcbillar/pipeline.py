@@ -55,6 +55,7 @@ from fcbillar.scraper.parsers import (
     parse_ranking_historial,
 )
 from fcbillar.scraper.url_builder import all_ranking_url_candidates
+from fcbillar.torneig_naming import clean_torneig_nom
 
 log = logging.getLogger(__name__)
 
@@ -1373,10 +1374,11 @@ def ingest_individuals_temporada(
                 log.warning("    FAIL classif %s %s: %s", torneig.nom, div.nom, e)
                 continue
             participants = parse_individuals_classificaciofinal(classif_html)
-            # Nom complet del torneig: "TRES BANDES - 1A DIVISIÓ"
-            nom_complet = (
-                torneig.nom if div.nom == "UNICA" else f"{torneig.nom} - {div.nom}"
-            )
+            # Nom complet del torneig: "TRES BANDES - 1A DIVISIÓ". clean_torneig_nom
+            # treu el sufix redundant quan la divisió només repeteix el nom del
+            # torneig (p.ex. "VI OPEN MATARÓ - OPEN MATARÓ").
+            raw_nom = torneig.nom if div.nom == "UNICA" else f"{torneig.nom} - {div.nom}"
+            nom_complet = clean_torneig_nom(raw_nom)
             try:
                 repo.upsert_torneig_individual(
                     TorneigIndividualRecord(

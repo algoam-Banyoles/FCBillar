@@ -272,14 +272,28 @@ def publish_games(
             hit = open_sig.get(
                 _sigkey(r["player1_nom"], r["caramboles1"], r["player2_nom"], r["caramboles2"], r["entrades"])
             )
-            if hit:
+            # Font primària: el vincle exacte persistit a games.torneig_id
+            # (linking.py). Validat localment i consistent amb la BD; substitueix
+            # el recàlcul de signatura. La sèrie encara s'enriqueix des de la
+            # partida de campionat exacta (open_sig) quan la tenim.
+            tnom = r["torneig_nom"]
+            if tnom:
+                label = _re.sub(r"\s*-\s*[ÚU]NICA\s*$", "", tnom, flags=_re.I).strip()
+                if hit:
+                    if s1 is None:
+                        s1 = hit[1].get(_nm(r["player1_nom"]))
+                    if s2 is None:
+                        s2 = hit[1].get(_nm(r["player2_nom"]))
+            elif hit:
                 label = hit[0]
                 if s1 is None:
                     s1 = hit[1].get(_nm(r["player1_nom"]))
                 if s2 is None:
                     s2 = hit[1].get(_nm(r["player2_nom"]))
             else:
-                # Fallback: torneig compartit (mateixa modalitat + temporada).
+                # Fallback (sense vincle exacte): torneig compartit (mateixa
+                # modalitat + temporada). Baixa confiança; només per a partides
+                # que el rànquing no va capturar dins de cap campionat scrapejat.
                 shared = part_idx.get(_nm(r["player1_nom"]), set()) & part_idx.get(
                     _nm(r["player2_nom"]), set()
                 )
@@ -314,6 +328,7 @@ def publish_games(
         """
         SELECT g.id, g.data_partida, m.codi_fcb AS modalitat_codi,
                comp.nom AS competicio, en.lliga_id AS lliga_id,
+               ti.nom AS torneig_nom,
                p1.fcb_id AS player1_fcb_id, p1.nom AS player1_nom,
                g.caramboles1, g.serie_max1,
                p2.fcb_id AS player2_fcb_id, p2.nom AS player2_nom,
@@ -323,6 +338,7 @@ def publish_games(
         JOIN modalitats m ON m.id = g.modalitat_id
         LEFT JOIN competicions comp ON comp.id = g.competicio_id
         LEFT JOIN encontres_lliga en ON en.id = g.encontre_lliga_id
+        LEFT JOIN torneigs_individuals ti ON ti.id = g.torneig_id
         JOIN players p1 ON p1.id = g.player1_id
         JOIN players p2 ON p2.id = g.player2_id
         LEFT JOIN players pw ON pw.id = g.guanyador_id
@@ -519,8 +535,19 @@ def publish_opens(
     sb = get_client()
 
     # open_id = id intern (únic: torneig_id_extern es repeteix per divisions).
+    # `tipus` (open/campionat) es deriva del nom amb el classificador compartit,
+    # perquè el frontend filtri per camp i no per heurística de string. El nom es
+    # neteja de manera defensiva (sufix redundant) per si la BD no s'ha netejat.
+    from fcbillar.torneig_naming import clean_torneig_nom, torneig_tipus
+
     opens = [
-        {"open_id": r["id"], "nom": r["nom"], "temporada_id": r["temporada_id"], "temporada": r["temp"]}
+        {
+            "open_id": r["id"],
+            "nom": clean_torneig_nom(r["nom"]),
+            "tipus": torneig_tipus(r["nom"]),
+            "temporada_id": r["temporada_id"],
+            "temporada": r["temp"],
+        }
         for r in conn.execute(
             "SELECT ti.id, ti.nom, ti.temporada_id, te.nom AS temp "
             "FROM torneigs_individuals ti LEFT JOIN temporades te ON te.id = ti.temporada_id"
