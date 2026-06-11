@@ -828,7 +828,7 @@ def publish_copa_encontres(
 def publish_open_partides(
     db_path: Path | None = None, on_progress: Progress | None = None
 ) -> dict[str, int]:
-    """Puja les partides (eliminatòries) dels opens, mapejades a l'open_id intern."""
+    """Puja les partides de grups i eliminatòries, mapejades a l'open_id intern."""
     from collections import defaultdict
 
     prog: Progress = on_progress or (lambda level, msg: None)

@@ -73,7 +73,7 @@
 		{open ? open.nom.replace(/\s*-\s*[ÚU]NICA\s*$/i, '').trim() : '…'}
 	</h1>
 	{#if partides.length}
-		<p class="mb-3 text-[11px] text-slate-400">Toca un jugador per veure els seus partits (eliminatòries).</p>
+		<p class="mb-3 text-[11px] text-slate-400">Toca un jugador per veure el desglòs de partides.</p>
 	{/if}
 
 	{#if loading}
@@ -119,7 +119,7 @@
 										<span class="w-12 text-right text-slate-400">{g.ent} ent</span>
 									</div>
 								{:else}
-									<p class="py-1 text-[11px] text-slate-400">Només té partits de fase de grups (no publicats individualment).</p>
+									<p class="py-1 text-[11px] text-slate-400">No hi ha partides desglossades disponibles per aquest jugador.</p>
 								{/each}
 								{#if r.player_fcb_id}
 									<a href="/jugador/{r.player_fcb_id}" class="mt-1 inline-block text-[11px] text-slate-500 underline">Fitxa completa →</a>

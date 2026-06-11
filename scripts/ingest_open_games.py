@@ -1,8 +1,12 @@
 """Ingest dels resultats reals (partides) dels opens/campionats individuals.
 
-Per cada (torneig, divisió):
-  - fases → eliminatòries  (/individuals/partideseliminatoria/t/d/fase)
-  - fases → grups → partides de grup (/individuals/partidesgrups/t/d/fase/grup)
+Per cada (torneig, divisió), segueix els enllaços reals publicats:
+  - fases → eliminatòries
+  - fases → grups → partides de grup
+
+S'accepten tant els subenllaços actuals `/individuals/...` com els històrics
+`/historial/...Individual/...`. Les dades es substitueixen divisió a divisió
+només quan s'ha pogut llegir com a mínim una pàgina de fases.
 
 Dos formats de partit:
   - eliminatòria: capçalera + 2 files (1 jugador cadascuna) + fila àrbitre/entrades
@@ -14,6 +18,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
+from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
@@ -22,6 +27,12 @@ from fcbillar.scraper.client import ScraperClient
 
 BASE = "https://www.fcbillar.cat"
 _PLAYER_RE = re.compile(r"(.+?)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)(?=\s|$)")
+_GROUP_PHASE_RE = re.compile(r"/(?:individuals/grups|historial/grupsIndividual)/", re.I)
+_GAME_PAGE_RE = re.compile(
+    r"/(?:individuals/partides(?:grups|eliminatoria)|"
+    r"historial/partides(?:grups|eliminatoria)Individual)/",
+    re.I,
+)
 
 
 def _players(txt: str):
@@ -62,6 +73,26 @@ def parse_partides(html: str):
     return out
 
 
+def linked_pages(html: str, pattern: re.Pattern[str]) -> list[str]:
+    """Retorna, sense duplicats, els enllaços de navegació que compleixen el patró."""
+    soup = BeautifulSoup(html, "lxml")
+    pages: list[str] = []
+    seen: set[str] = set()
+    for link in soup.select("a[href]"):
+        href = link.get("href", "").strip()
+        if not pattern.search("/" + href.lstrip("/")):
+            continue
+        url = urljoin(f"{BASE}/", href)
+        if url not in seen:
+            seen.add(url)
+            pages.append(url)
+    return pages
+
+
+def page_id(url: str) -> int:
+    return int(urlparse(url).path.rstrip("/").rsplit("/", 1)[-1])
+
+
 def main() -> None:
     s = get_settings()
     conn = sqlite3.connect(str(s.db_path))
@@ -69,62 +100,67 @@ def main() -> None:
     opens = conn.execute(
         "SELECT DISTINCT torneig_id_extern, divisio_id_extern FROM torneigs_individuals"
     ).fetchall()
-    conn.execute("DELETE FROM torneig_partides")
-    conn.commit()
     total = 0
     with ScraperClient(s) as cl:
         for i, o in enumerate(opens, 1):
             t, d = o["torneig_id_extern"], o["divisio_id_extern"]
+            phase_html: list[str] = []
             try:
-                fases_html = cl.fetch_html(f"{BASE}/ca/individuals/fases/{t}/{d}")
-            except Exception as e:  # noqa: BLE001
-                print(f"[{i}/{len(opens)}] {t}/{d}: FAIL fases {e}", flush=True)
+                phase_html.append(cl.fetch_html(f"{BASE}/ca/individuals/fases/{t}/{d}"))
+            except Exception:  # noqa: BLE001
+                pass
+            if not phase_html:
+                print(f"[{i}/{len(opens)}] {t}/{d}: FAIL fases", flush=True)
                 continue
-            soup = BeautifulSoup(fases_html, "lxml")
-            elim, grupfases = set(), set()
-            for a in soup.select("a"):
-                h = a.get("href", "")
-                m = re.search(r"partideseliminatoria/\d+/\d+/(\d+)", h)
-                if m:
-                    elim.add(int(m.group(1)))
-                m = re.search(r"/individuals/grups/\d+/\d+/(\d+)", h)
-                if m:
-                    grupfases.add(int(m.group(1)))
 
-            pages: list[tuple[int, str]] = []  # (fase_id, url)
-            for f in sorted(elim):
-                pages.append((f, f"{BASE}/ca/individuals/partideseliminatoria/{t}/{d}/{f}"))
-            for f in sorted(grupfases):
+            pages: list[str] = []
+            group_pages: list[str] = []
+            for html in phase_html:
+                pages.extend(linked_pages(html, _GAME_PAGE_RE))
+                group_pages.extend(linked_pages(html, _GROUP_PHASE_RE))
+            for group_url in dict.fromkeys(group_pages):
                 try:
-                    ghtml = cl.fetch_html(f"{BASE}/ca/individuals/grups/{t}/{d}/{f}")
+                    group_html = cl.fetch_html(group_url)
                 except Exception:  # noqa: BLE001
                     continue
-                for a in BeautifulSoup(ghtml, "lxml").select("a"):
-                    m = re.search(r"partidesgrups/\d+/\d+/\d+/(\d+)", a.get("href", ""))
-                    if m:
-                        gid = int(m.group(1))
-                        pages.append((gid, f"{BASE}/ca/individuals/partidesgrups/{t}/{d}/{f}/{gid}"))
+                pages.extend(linked_pages(group_html, _GAME_PAGE_RE))
 
-            n = 0
-            for fase_id, url in pages:
+            games: list[tuple] = []
+            seen_games: set[tuple] = set()
+            for url in dict.fromkeys(pages):
                 try:
                     html = cl.fetch_html(url)
                 except Exception:  # noqa: BLE001
                     continue
                 for g in parse_partides(html):
-                    conn.execute(
-                        """INSERT INTO torneig_partides
-                        (torneig_id_extern, divisio_id_extern, fase_id,
-                         player1_nom, caramboles1, serie1, punts1,
-                         player2_nom, caramboles2, serie2, punts2, entrades)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-                        (t, d, fase_id, g["p1"], g["car1"], g["serie1"], g["punts1"],
-                         g["p2"], g["car2"], g["serie2"], g["punts2"], g["entrades"]),
+                    row = (
+                        t, d, page_id(url), g["p1"], g["car1"], g["serie1"], g["punts1"],
+                        g["p2"], g["car2"], g["serie2"], g["punts2"], g["entrades"],
                     )
-                    n += 1
+                    signature = row[2:]
+                    if signature not in seen_games:
+                        seen_games.add(signature)
+                        games.append(row)
+
+            conn.execute(
+                "DELETE FROM torneig_partides WHERE torneig_id_extern=? AND divisio_id_extern=?",
+                (t, d),
+            )
+            conn.executemany(
+                """INSERT INTO torneig_partides
+                (torneig_id_extern, divisio_id_extern, fase_id,
+                 player1_nom, caramboles1, serie1, punts1,
+                 player2_nom, caramboles2, serie2, punts2, entrades)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                games,
+            )
             conn.commit()
-            total += n
-            print(f"[{i}/{len(opens)}] {t}/{d}: {n} partides", flush=True)
+            total += len(games)
+            print(
+                f"[{i}/{len(opens)}] {t}/{d}: {len(games)} partides "
+                f"({len(dict.fromkeys(pages))} pàgines)",
+                flush=True,
+            )
     print(f"FET. total partides: {total}", flush=True)
 
 
