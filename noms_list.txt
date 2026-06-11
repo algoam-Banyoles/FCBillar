@@ -13,4 +13,4 @@
 # (majúscules i "COGNOM1 COGNOM2, NOM" incloses). Les línies buides i les
 # que comencen amb # s'ignoren.
 
-SALGAS CASTAÑO, MÓNICA = SALGAS CASTAÑO, MÒNICA
+SALGAS CASTAÑO, MÓNICA = SALGÀS CASTAÑO, MÒNICA
