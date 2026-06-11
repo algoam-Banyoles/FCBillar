@@ -1,6 +1,6 @@
 """Calcula rècords per modalitat i els publica a fcbillar.records.
 
-5 KPIs × 5 modalitats. Les dades de joc (sèrie, mitjana de partida, partides)
+5 KPIs x 5 modalitats. Les dades de joc (sèrie, mitjana de partida, partides)
 es prenen dels games del NÚVOL (que ja tenen la sèrie enriquida d'opens/copa);
 la mitjana al rànquing i els títols, de la BD local.
 """
@@ -48,6 +48,24 @@ def fetch_cloud_games():
     return out
 
 
+def game_detail(game: dict, side: int, codi: int) -> str:
+    """Context navegable d'un rècord assolit en una partida concreta."""
+    opp_side = 2 if side == 1 else 1
+    return json.dumps(
+        {
+            "kind": "game",
+            "game_id": game["id"],
+            "modalitat_codi": codi,
+            "data": game["data_partida"],
+            "rival": game[f"player{opp_side}_nom"],
+            "caramboles": game[f"caramboles{side}"],
+            "caramboles_rival": game[f"caramboles{opp_side}"],
+            "entrades": game["entrades"],
+        },
+        ensure_ascii=False,
+    )
+
+
 def main() -> None:
     s = get_settings()
     conn = sqlite3.connect(str(s.db_path))
@@ -86,30 +104,15 @@ def main() -> None:
                 if valid_record_average(codi, g["caramboles1"], g["caramboles2"], ent):
                     avg = car / ent
                     if avg > best_avg.get(fcb, (0.0, None))[0]:
-                        opp_side = 2 if side == 1 else 1
-                        best_avg[fcb] = (
-                            avg,
-                            json.dumps(
-                                {
-                                    "game_id": g["id"],
-                                    "modalitat_codi": codi,
-                                    "data": g["data_partida"],
-                                    "rival": g[f"player{opp_side}_nom"],
-                                    "caramboles": car,
-                                    "caramboles_rival": g[f"caramboles{opp_side}"],
-                                    "entrades": ent,
-                                },
-                                ensure_ascii=False,
-                            ),
-                        )
-                if ser is not None:
-                    best_ser[fcb] = max(best_ser.get(fcb, 0), ser)
+                        best_avg[fcb] = (avg, game_detail(g, side, codi))
+                if ser is not None and ser > best_ser.get(fcb, (0, None))[0]:
+                    best_ser[fcb] = (ser, game_detail(g, side, codi))
 
         push(f"{mnom} · Mitjana partida",
              sorted(((f, noms[f], v[0], v[1]) for f, v in best_avg.items()), key=lambda x: -x[2]),
              lambda v: f"{v:.3f}")
         push(f"{mnom} · Sèrie major",
-             sorted(((f, noms[f], v) for f, v in best_ser.items()), key=lambda x: -x[2]),
+             sorted(((f, noms[f], v[0], v[1]) for f, v in best_ser.items()), key=lambda x: -x[2]),
              lambda v: str(v))
         push(f"{mnom} · Més partides",
              sorted(((f, noms[f], v) for f, v in n.items()), key=lambda x: -x[2]),
@@ -117,13 +120,46 @@ def main() -> None:
 
         # ---- Mitjana al rànquing (local) ----
         rk = [
-            (r["fcb"], r["nom"], r["v"])
+            (
+                r["fcb"],
+                r["nom"],
+                r["v"],
+                json.dumps(
+                    {
+                        "kind": "ranking",
+                        "modalitat_codi": codi,
+                        "num_seq": r["num_seq"],
+                        "any_pub": r["any_pub"],
+                        "mes_pub": r["mes_pub"],
+                        "posicio": r["posicio"],
+                    },
+                    ensure_ascii=False,
+                ),
+            )
             for r in conn.execute(
-                """SELECT p.fcb_id fcb, p.nom, MAX(re.mitjana_general) v
-                   FROM ranking_entries re JOIN rankings rk ON rk.id=re.ranking_id
-                   JOIN modalitats m ON m.id=rk.modalitat_id JOIN players p ON p.id=re.player_id
-                   WHERE m.codi_fcb=? AND p.fcb_id NOT LIKE 'name:%'
-                   GROUP BY p.id HAVING COUNT(*)>=5 ORDER BY v DESC LIMIT 5""",
+                """
+                WITH ranked AS (
+                    SELECT p.fcb_id fcb, p.nom, re.mitjana_general v,
+                           re.posicio, rk.num_seq, rk.any_pub, rk.mes_pub,
+                           COUNT(*) OVER (PARTITION BY p.id) AS mostres,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY p.id
+                               ORDER BY re.mitjana_general DESC, rk.any_pub DESC,
+                                        rk.mes_pub DESC, rk.num_seq DESC
+                           ) AS millor
+                    FROM ranking_entries re
+                    JOIN rankings rk ON rk.id=re.ranking_id
+                    JOIN modalitats m ON m.id=rk.modalitat_id
+                    JOIN players p ON p.id=re.player_id
+                    WHERE m.codi_fcb=? AND p.fcb_id NOT LIKE 'name:%'
+                      AND re.mitjana_general IS NOT NULL
+                )
+                SELECT fcb, nom, v, posicio, num_seq, any_pub, mes_pub
+                FROM ranked
+                WHERE mostres >= 5 AND millor = 1
+                ORDER BY v DESC
+                LIMIT 5
+                """,
                 (codi,),
             )
         ]
@@ -149,7 +185,7 @@ def main() -> None:
     conn.close()
     sb = get_client()
     sb.table("records").delete().neq("categoria", "").execute()
-    nrec = _upsert(sb, "records", rows, "categoria,ordre", lambda l, m: None)
+    nrec = _upsert(sb, "records", rows, "categoria,ordre", lambda level, message: None)
     print(f"records: {nrec} ({len(set(r['categoria'] for r in rows))} categories)")
 
 

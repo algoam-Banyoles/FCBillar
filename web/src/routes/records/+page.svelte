@@ -2,7 +2,8 @@
 	import { onMount } from 'svelte';
 	import { supabase } from '$lib/supabase';
 
-	type Detail = {
+	type GameDetail = {
+		kind?: 'game';
 		game_id: string;
 		modalitat_codi: number;
 		data: string | null;
@@ -11,6 +12,15 @@
 		caramboles_rival: number;
 		entrades: number;
 	};
+	type RankingDetail = {
+		kind: 'ranking';
+		modalitat_codi: number;
+		num_seq: number;
+		any_pub: number | null;
+		mes_pub: number | null;
+		posicio: number | null;
+	};
+	type Detail = GameDetail | RankingDetail;
 	type Rec = { categoria: string; ordre: number; player_fcb_id: string | null; jugador: string; valor: string; detall: string | null };
 	let recs = $state<Rec[]>([]);
 	let loading = $state(true);
@@ -48,6 +58,13 @@
 		}
 	}
 	const fmtDate = (s: string | null) => s ? s.split('-').reverse().join('/') : '';
+	const fmtRanking = (d: RankingDetail) => {
+		const date = d.any_pub && d.mes_pub ? `${String(d.mes_pub).padStart(2, '0')}/${d.any_pub}` : '';
+		const position = d.posicio ? ` · posició ${d.posicio}` : '';
+		return `Rànquing ${d.num_seq}${date ? ` · ${date}` : ''}${position}`;
+	};
+	const playerHref = (fcbId: string, d: Detail | null) =>
+		`/jugador/${fcbId}?mod=${d?.modalitat_codi ?? ''}${d && d.kind !== 'ranking' ? `&game=${d.game_id}` : ''}`;
 </script>
 
 <h1 class="mb-3 text-lg font-bold">Rècords</h1>
@@ -77,9 +94,11 @@
 						<li class="flex items-center gap-2 border-b border-slate-100 px-3 py-2 last:border-0">
 							<span class="w-5 shrink-0 text-center text-xs font-semibold tabular-nums {r.ordre === 1 ? 'text-amber-500' : 'text-slate-400'}">{r.ordre}</span>
 							{#if r.player_fcb_id}
-								<a href="/jugador/{r.player_fcb_id}{d ? `?mod=${d.modalitat_codi}&game=${d.game_id}` : ''}" class="min-w-0 flex-1 active:underline">
+								<a href={playerHref(r.player_fcb_id, d)} class="min-w-0 flex-1 active:underline">
 									<div class="truncate text-sm font-medium leading-tight">{r.jugador}</div>
-									{#if d}
+									{#if d?.kind === 'ranking'}
+										<div class="truncate text-[10px] text-slate-400">{fmtRanking(d)}</div>
+									{:else if d}
 										<div class="truncate text-[10px] text-slate-400">{fmtDate(d.data)} · vs {d.rival} · {d.caramboles}–{d.caramboles_rival} / {d.entrades} ent.</div>
 									{/if}
 								</a>
