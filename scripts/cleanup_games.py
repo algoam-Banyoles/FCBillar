@@ -70,9 +70,22 @@ def main() -> None:
         c.execute("DELETE FROM ranking_game_links WHERE game_id=?", (i,))
         c.execute("DELETE FROM games WHERE id=?", (i,))
 
+    # 5. Empats de 3 bandes amb un únic dígit d'entrades: la font de vegades
+    # trunca el zero final del límit (13-13/5 en lloc de 13-13/50).
+    truncated_draws = c.execute(
+        """UPDATE games SET entrades=entrades*10
+           WHERE modalitat_id IN(SELECT id FROM modalitats WHERE codi_fcb=1)
+             AND guanyador_id IS NULL AND caramboles1=caramboles2
+             AND caramboles1>0 AND entrades BETWEEN 1 AND 9"""
+    ).rowcount
+
     c.commit()
     tot = c.execute("SELECT COUNT(*) FROM games").fetchone()[0]
-    print(f"fusionats {merged} | sèries netejades {s1+s2} | avg-impossibles esborrats {len(bad)} | total games {tot}")
+    print(
+        f"fusionats {merged} | sèries netejades {s1+s2} | "
+        f"avg-impossibles esborrats {len(bad)} | empats truncats {truncated_draws} | "
+        f"total games {tot}"
+    )
     c.close()
 
 

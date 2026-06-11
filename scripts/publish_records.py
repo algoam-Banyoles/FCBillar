@@ -17,6 +17,18 @@ from fcbillar.config import get_settings
 
 MODS = [(1, "Tres Bandes"), (2, "Lliure"), (3, "Quadre 47/2"), (4, "Banda"), (6, "Quadre 71/2")]
 
+
+def valid_record_average(codi: int, car1: int | None, car2: int | None, ent: int | None) -> bool:
+    """Descarta resultats incomplets o entrades truncades abans de calcular rècords."""
+    if not ent or car1 is None or car2 is None:
+        return False
+    if codi == 1 and max(car1, car2) / ent > 2.7:
+        return False
+    # A 3 bandes, un empat positiu en menys de 10 entrades acostuma a ser un
+    # límit truncat (p. ex. 13-13/5 publicat en lloc de 13-13/50).
+    return not (codi == 1 and ent < 10 and car1 == car2 and car1 > 0)
+
+
 def fetch_cloud_games():
     url, anon = _env("SUPABASE_URL"), _env("PUBLIC_SUPABASE_ANON_KEY")
     h = {"apikey": anon, "Accept-Profile": "fcbillar"}
@@ -68,7 +80,7 @@ def main() -> None:
                 # partida vàlida (p. ex. 300/1 a Lliure o 35/10 a 3 bandes).
                 # Aplicar-hi mínims d'entrades o sostres artificials amagava
                 # precisament els rècords reals.
-                if ent and car is not None:
+                if valid_record_average(codi, g["caramboles1"], g["caramboles2"], ent):
                     avg = car / ent
                     best_avg[fcb] = max(best_avg.get(fcb, 0.0), avg)
                 if ser is not None:
