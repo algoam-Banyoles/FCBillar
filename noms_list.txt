@@ -1,0 +1,16 @@
+# Overrides de noms de jugador (display).
+#
+# Els noms vénen de la federació (fcbillar.cat) tal qual, sovint en grafia
+# castellana (Mónica, García, Castaño…). Aquí pots forçar la forma a mostrar
+# sense tocar la dada d'origen. S'aplica al moment de publicar a Supabase
+# (cloud_sync.py), de manera que afecta TOTES les apps que llegeixen el núvol
+# (FCBillar web i l'app de campionats).
+#
+# Format (una correcció per línia):
+#   NOM TAL COM SURT (federatiu) = Nom a mostrar
+#
+# El costat esquerre ha de coincidir EXACTAMENT amb el nom federatiu
+# (majúscules i "COGNOM1 COGNOM2, NOM" incloses). Les línies buides i les
+# que comencen amb # s'ignoren.
+
+SALGAS CASTAÑO, MÓNICA = SALGAS CASTAÑO, MÒNICA

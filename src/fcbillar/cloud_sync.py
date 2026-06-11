@@ -13,6 +13,7 @@ ranking_entries). Idempotent via upsert sobre claus naturals.
 
 from __future__ import annotations
 
+import functools
 import sqlite3
 from collections.abc import Callable, Iterable
 from pathlib import Path
@@ -21,6 +22,33 @@ from fcbillar.config import PROJECT_ROOT, get_settings
 
 SCHEMA = "fcbillar"
 Progress = Callable[[str, str], None]
+
+
+@functools.lru_cache(maxsize=1)
+def _name_overrides() -> dict[str, str]:
+    """Mapa 'nom federatiu' → 'nom a mostrar' llegit de `noms_list.txt` (arrel).
+
+    Els noms vénen de la federació tal qual (sovint en castellà: "MÓNICA",
+    "CASTAÑO"…). Aquest fitxer permet forçar la forma a mostrar sense tocar la
+    dada d'origen. S'aplica al publicar, de manera que TOTES les apps que
+    llegeixen el núvol (FCBillar web i campionats) reben el nom corregit.
+    """
+    out: dict[str, str] = {}
+    f = PROJECT_ROOT / "noms_list.txt"
+    if f.exists():
+        for raw in f.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            left, right = line.split("=", 1)
+            if left.strip() and right.strip():
+                out[left.strip()] = right.strip()
+    return out
+
+
+def _disp(nom: str | None) -> str | None:
+    """Nom de jugador a mostrar, aplicant l'override de `noms_list.txt` si n'hi ha."""
+    return _name_overrides().get(nom, nom) if nom is not None else None
 
 
 def _env(name: str) -> str | None:
@@ -103,7 +131,7 @@ def publish_rankings(
         club = r["club_fcb_id"] if r["club_fcb_id"] in club_ids else None
         players.append({
             "fcb_id": r["fcb_id"],
-            "nom": r["nom"],
+            "nom": _disp(r["nom"]),
             "club_fcb_id": club,
             "seguiment": bool(r["seguiment"]),
         })
@@ -348,9 +376,9 @@ def publish_games(
         games.append({
             "id": r["id"], "data_partida": r["data_partida"], "modalitat_codi": r["modalitat_codi"],
             "competicio": label,
-            "player1_fcb_id": r["player1_fcb_id"], "player1_nom": r["player1_nom"],
+            "player1_fcb_id": r["player1_fcb_id"], "player1_nom": _disp(r["player1_nom"]),
             "caramboles1": r["caramboles1"], "serie_max1": s1,
-            "player2_fcb_id": r["player2_fcb_id"], "player2_nom": r["player2_nom"],
+            "player2_fcb_id": r["player2_fcb_id"], "player2_nom": _disp(r["player2_nom"]),
             "caramboles2": r["caramboles2"], "serie_max2": s2,
             "entrades": r["entrades"], "guanyador_fcb_id": r["guanyador_fcb_id"],
         })
@@ -661,7 +689,7 @@ def publish_opens(
         seen.add(key)
         classifs.append({
             "open_id": r["open_id"], "posicio": r["posicio"],
-            "player_fcb_id": r["player_fcb_id"], "jugador": r["jugador"], "club": r["club"],
+            "player_fcb_id": r["player_fcb_id"], "jugador": _disp(r["jugador"]), "club": r["club"],
             "partides": r["partides"], "punts": r["punts"], "caramboles": r["caramboles"],
             "entrades": r["entrades"], "mitjana_general": r["mitjana_general"],
             "mitjana_particular": r["mitjana_particular"], "serie_max": r["serie_max"],
@@ -749,7 +777,7 @@ def publish_lliga_player_rankings(
             continue
         rows.append({
             "lliga_id": LLIGA_3B_ID, "divisio_id": div, "grup_id": grup, "posicio": pos,
-            "player_fcb_id": fcb, "jugador": nom, "club": equip_club.get(a["eq"]),
+            "player_fcb_id": fcb, "jugador": _disp(nom), "club": equip_club.get(a["eq"]),
             "partides": a["pj"], "punts": a["punts"], "caramboles": a["car"], "entrades": a["ent"],
             "mitjana": (a["car"] / a["ent"]) if a["ent"] else None,
         })
@@ -810,7 +838,7 @@ def publish_copa_player_rankings(
         pos += 1
         rows.append({
             "edicio_id": edicio, "jornada": 0, "grup_id": 0, "posicio": pos,
-            "player_fcb_id": fcb, "jugador": nom, "club": None,
+            "player_fcb_id": fcb, "jugador": _disp(nom), "club": None,
             "partides": a["pj"], "punts": a["punts"], "caramboles": a["car"], "entrades": a["ent"],
             "mitjana": (a["car"] / a["ent"]) if a["ent"] else None,
         })
@@ -888,8 +916,8 @@ def publish_lliga_encontres(
         counter[r["eid"]] += 1
         part_rows.append({
             "encontre_id": r["eid"], "ordre": counter[r["eid"]], "modalitat_codi": r["mod"],
-            "jugador_local": r["j1"], "caramboles_local": r["c1"],
-            "jugador_visitant": r["j2"], "caramboles_visitant": r["c2"], "entrades": r["e"],
+            "jugador_local": _disp(r["j1"]), "caramboles_local": r["c1"],
+            "jugador_visitant": _disp(r["j2"]), "caramboles_visitant": r["c2"], "entrades": r["e"],
         })
 
     counts = {}
@@ -1114,7 +1142,7 @@ def publish_open_ranking(
             all_rows.append({
                 "genere": "general", "ronda": i, "ronda_nom": onom.get(last_open),
                 "ronda_data": open_date.get(last_open) or None, "ronda_temp": tnom.get(last_open),
-                "posicio": posicio, "player_fcb_id": fcb, "jugador": nom,
+                "posicio": posicio, "player_fcb_id": fcb, "jugador": _disp(nom),
                 "club": club, "opens_jugats": njug, "punts": total,
                 "detall": det,
             })
