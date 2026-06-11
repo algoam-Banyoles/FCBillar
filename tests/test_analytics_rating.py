@@ -15,9 +15,9 @@ from fcbillar.db.migrations import ensure_schema
 def _setup(tmp_path) -> tuple[sqlite3.Connection, int]:
     """BD mínima: jugador P contra 3 oponents amb nivells coneguts.
 
-    - A: mitjana de rànquing 0,9 (via link)  → grup 0,800–1,000, P guanya
-    - B: mitjana de rànquing 0,5 (via link)  → grup 0,400–0,600, P perd
-    - C: sense link → fallback 18/30 = 0,6    → grup 0,600–0,800, P guanya
+    - A: mitjana de ranquing 0,9 (via link), grup 0,800-1,000, P guanya
+    - B: mitjana de ranquing 0,5 (via link), grup 0,400-0,600, P perd
+    - C: sense link (fallback 18/30 = 0,6), grup 0,600-0,800, P guanya
     """
     conn = ensure_schema(tmp_path / "t.db")
     conn.row_factory = sqlite3.Row
