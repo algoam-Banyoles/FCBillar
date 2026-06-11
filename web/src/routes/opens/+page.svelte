@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { supabase, type Open } from '$lib/supabase';
+	import { supabase, tipusOf, type Open } from '$lib/supabase';
 
 	let opens = $state<Open[]>([]);
 	let ranking = $state<any[]>([]);
@@ -34,10 +34,8 @@
 	function norm(s: string): string {
 		return s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 	}
-	// Tipus de torneig: prioritza el camp publicat des de Python; si encara és null
-	// (dada no republicada), recau en l'heurística antiga de nom.
-	const tipusOf = (o: Open) =>
-		o.tipus ?? (o.nom.toUpperCase().includes('OPEN') ? 'open' : 'campionat');
+	// Tipus de torneig: prioritza el camp publicat; fallback a la regla compartida
+	// (tipusOf de $lib/supabase, mirall de fcbillar.torneig_naming).
 	const clean = (nom: string) => nom.replace(/\s*-\s*[ÚU]NICA\s*$/i, '').trim();
 
 	onMount(async () => {

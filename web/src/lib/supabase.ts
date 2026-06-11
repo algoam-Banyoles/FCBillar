@@ -108,6 +108,20 @@ export interface Open {
 	temporada_id: number | null;
 	temporada?: string | null;
 }
+
+// Classificació de tipus de torneig coherent entre temporades (mirall de
+// fcbillar.torneig_naming.torneig_tipus). Trofeu amb nom propi → 'open'; només
+// modalitat+divisió o CAMPIONAT/CATALUNYA → 'campionat'. Independent de si el nom
+// porta literalment 'OPEN' (arregla Memorial Jaume Arnau, etc.). S'usa com a
+// fallback quan el camp `tipus` publicat encara és null.
+const OPEN_MARKERS = ['OPEN', 'MEMORIAL', 'TROFEU', 'CIUTAT', 'GRAN PREMI', 'CRITERIUM'];
+export function torneigTipus(nom: string): 'open' | 'campionat' {
+	const u = nom.normalize('NFD').replace(/\p{Diacritic}/gu, '').toUpperCase();
+	if (u.includes('CAMPIONAT') || u.includes('CATALUNYA')) return 'campionat';
+	if (OPEN_MARKERS.some((m) => u.includes(m))) return 'open';
+	return 'campionat';
+}
+export const tipusOf = (o: Open): 'open' | 'campionat' => o.tipus ?? torneigTipus(o.nom);
 export interface OpenClassification {
 	open_id: number;
 	posicio: number | null;
