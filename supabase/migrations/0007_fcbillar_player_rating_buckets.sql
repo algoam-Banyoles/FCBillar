@@ -19,5 +19,6 @@ create index if not exists idx_fcbillar_rating_buckets_player
     on fcbillar.player_rating_buckets(player_fcb_id, modalitat_codi);
 
 alter table fcbillar.player_rating_buckets enable row level security;
+drop policy if exists "read player_rating_buckets" on fcbillar.player_rating_buckets;
 create policy "read player_rating_buckets" on fcbillar.player_rating_buckets
     for select to anon, authenticated using (true);
