@@ -1,0 +1,128 @@
+<script lang="ts">
+	// Radar (aranya) de rendiment: un eix per grup d'oponent, dos polígons
+	// superposats (victòries / derrotes). SVG pur, sense dependències.
+	export let buckets: { label: string; wins: number; losses: number; draws?: number }[] = [];
+	export let size = 340;
+
+	const WIN = '#16a34a';
+	const LOSS = '#dc2626';
+
+	// Geometria.
+	$: n = buckets.length;
+	$: cx = size / 2;
+	$: cy = size / 2;
+	$: R = size / 2 - 58; // marge per a les etiquetes
+
+	$: maxVal = Math.max(1, ...buckets.flatMap((b) => [b.wins, b.losses]));
+	// Escala "maca" per a l'anell exterior.
+	function niceCeil(v: number): number {
+		if (v <= 5) return 5;
+		if (v <= 10) return 10;
+		const step = v <= 50 ? 5 : v <= 100 ? 10 : 25;
+		return Math.ceil(v / step) * step;
+	}
+	$: scaleMax = niceCeil(maxVal);
+
+	function angle(i: number): number {
+		return (-90 + (i * 360) / n) * (Math.PI / 180);
+	}
+	function pt(i: number, r: number): [number, number] {
+		const a = angle(i);
+		return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+	}
+	function poly(values: number[]): string {
+		return values
+			.map((v, i) => {
+				const [x, y] = pt(i, (v / scaleMax) * R);
+				return `${x.toFixed(1)},${y.toFixed(1)}`;
+			})
+			.join(' ');
+	}
+
+	$: rings = [0.25, 0.5, 0.75, 1].map((f) => ({
+		f,
+		points: Array.from({ length: n }, (_, i) => {
+			const [x, y] = pt(i, f * R);
+			return `${x.toFixed(1)},${y.toFixed(1)}`;
+		}).join(' ')
+	}));
+
+	$: winPoly = poly(buckets.map((b) => b.wins));
+	$: lossPoly = poly(buckets.map((b) => b.losses));
+
+	$: hasData = buckets.some((b) => b.wins + b.losses > 0);
+
+	function anchor(i: number): string {
+		const c = Math.cos(angle(i));
+		if (c > 0.15) return 'start';
+		if (c < -0.15) return 'end';
+		return 'middle';
+	}
+</script>
+
+{#if !hasData}
+	<p class="text-slate-500 text-sm">Sense partides classificades per nivell d'oponent.</p>
+{:else}
+	<div class="flex flex-col items-center">
+		<svg viewBox="0 0 {size} {size}" width={size} height={size} class="max-w-full">
+			<!-- Anells de la graella -->
+			{#each rings as ring}
+				<polygon
+					points={ring.points}
+					fill="none"
+					stroke="#e2e8f0"
+					stroke-width="1"
+				/>
+			{/each}
+			<!-- Radis -->
+			{#each buckets as _b, i}
+				{@const [x, y] = pt(i, R)}
+				<line x1={cx} y1={cy} x2={x} y2={y} stroke="#e2e8f0" stroke-width="1" />
+			{/each}
+			<!-- Polígons V / D -->
+			<polygon points={lossPoly} fill={LOSS} fill-opacity="0.18" stroke={LOSS} stroke-width="2" />
+			<polygon points={winPoly} fill={WIN} fill-opacity="0.22" stroke={WIN} stroke-width="2" />
+			<!-- Vèrtexs -->
+			{#each buckets as b, i}
+				{@const [wx, wy] = pt(i, (b.wins / scaleMax) * R)}
+				{@const [lx, ly] = pt(i, (b.losses / scaleMax) * R)}
+				<circle cx={lx} cy={ly} r="3" fill={LOSS} />
+				<circle cx={wx} cy={wy} r="3" fill={WIN} />
+			{/each}
+			<!-- Etiquetes dels eixos -->
+			{#each buckets as b, i}
+				{@const [lxr, lyr] = pt(i, R + 14)}
+				<text
+					x={lxr}
+					y={lyr}
+					text-anchor={anchor(i)}
+					dominant-baseline="middle"
+					class="fill-slate-600"
+					style="font-size: 11px; font-weight: 600"
+				>
+					{b.label}
+				</text>
+				<text
+					x={lxr}
+					y={lyr + 13}
+					text-anchor={anchor(i)}
+					dominant-baseline="middle"
+					style="font-size: 10px"
+				>
+					<tspan fill={WIN}>{b.wins}V</tspan>
+					<tspan fill="#94a3b8"> · </tspan>
+					<tspan fill={LOSS}>{b.losses}D</tspan>
+				</text>
+			{/each}
+		</svg>
+		<div class="flex items-center gap-4 text-xs text-slate-600 mt-1">
+			<span class="flex items-center gap-1">
+				<span class="inline-block w-3 h-3 rounded-sm" style="background:{WIN}"></span> Victòries
+			</span>
+			<span class="flex items-center gap-1">
+				<span class="inline-block w-3 h-3 rounded-sm" style="background:{LOSS}"></span> Derrotes
+			</span>
+			<span class="text-slate-400">escala 0–{scaleMax}</span>
+		</div>
+	</div>
+{/if}

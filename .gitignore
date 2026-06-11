@@ -23,6 +23,7 @@ data/fcbillar.db-shm
 data/cache/
 data/exports/
 data/*.db
+data/*.db.bak*
 
 # Logs
 logs/

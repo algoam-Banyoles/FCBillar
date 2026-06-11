@@ -359,6 +359,52 @@ def publish_games(
     return {"games": n}
 
 
+def publish_rating_buckets(
+    db_path: Path | None = None, on_progress: Progress | None = None
+) -> dict[str, int]:
+    """Precomputa i puja el rendiment per nivell d'oponent (aranya de la fitxa).
+
+    De moment només Tres bandes (codi_fcb = 1). La lògica viu a
+    `fcbillar.analytics` perquè local (API) i núvol calculin idèntic."""
+    from fcbillar.analytics import (
+        RATING_BUCKETS_TB,
+        rating_breakdown,
+        rating_breakdown_rows,
+    )
+
+    prog: Progress = on_progress or (lambda level, msg: None)
+    db_path = db_path or get_settings().db_path
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    sb = get_client()
+
+    fcb_by_pid = {r["id"]: r["fcb_id"] for r in conn.execute("SELECT id, fcb_id FROM players")}
+    data = rating_breakdown(conn, 1, None)
+    conn.close()
+
+    label_by_key = {key: label for key, label, _lo, _hi in RATING_BUCKETS_TB}
+    rows = []
+    for pid, buckets in data.items():
+        fid = fcb_by_pid.get(pid)
+        if not fid:
+            continue
+        for b in rating_breakdown_rows(buckets):
+            rows.append({
+                "player_fcb_id": fid,
+                "modalitat_codi": 1,
+                "bucket": b["bucket"],
+                "bucket_order": b["bucket_order"],
+                "label": label_by_key[b["bucket"]],
+                "wins": b["wins"],
+                "losses": b["losses"],
+                "draws": b["draws"],
+            })
+    n = _upsert(
+        sb, "player_rating_buckets", rows, "player_fcb_id,modalitat_codi,bucket", prog
+    )
+    return {"player_rating_buckets": n}
+
+
 # Lliga Catalana Tres Bandes = competició/portal lliga_id 36.
 LLIGA_3B_ID = 36
 

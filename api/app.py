@@ -262,6 +262,12 @@ def player_games(fcb_id: str, limit: int = 100, modalitat: int | None = None) ->
     return [asdict(g) for g in ds().player_games(fcb_id, limit, modalitat_codi_fcb=modalitat)]
 
 
+@app.get("/api/players/{fcb_id}/rating-breakdown")
+def player_rating_breakdown(fcb_id: str, modalitat: int = 1) -> dict:
+    """V/D per nivell de l'oponent (mitjana de rànquing al moment de la partida)."""
+    return ds().player_rating_breakdown(fcb_id, modalitat_codi=modalitat)
+
+
 # ======================================================================
 # Clubs
 # ======================================================================

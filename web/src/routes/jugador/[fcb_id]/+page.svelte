@@ -2,6 +2,7 @@
 	import { page } from '$app/stores';
 	import { supabase, type GameRow } from '$lib/supabase';
 	import { follows, toggleFollow } from '$lib/follows';
+	import RadarChart from '$lib/components/RadarChart.svelte';
 
 	const fcbId = $derived($page.params.fcb_id);
 
@@ -376,6 +377,28 @@
 			mitjana: r.mitjana_general
 		}));
 		selIdx = null;
+	}
+
+	// Rendiment per nivell d'oponent (aranya). Precomputat; només Tres bandes (1).
+	let ratingBuckets = $state<{ label: string; wins: number; losses: number; draws: number }[]>([]);
+	$effect(() => {
+		const id = fcbId;
+		if (id && selMod === 1) loadRatingBuckets(id);
+		else ratingBuckets = [];
+	});
+	async function loadRatingBuckets(id: string) {
+		const { data } = await supabase
+			.from('player_rating_buckets')
+			.select('bucket_order, label, wins, losses, draws')
+			.eq('player_fcb_id', id)
+			.eq('modalitat_codi', 1)
+			.order('bucket_order', { ascending: true });
+		ratingBuckets = (data ?? []).map((r) => ({
+			label: r.label,
+			wins: r.wins ?? 0,
+			losses: r.losses ?? 0,
+			draws: r.draws ?? 0
+		}));
 	}
 	// Marques de l'eix X (divisions) amb el número de rànquing de referència.
 	const xTicks = $derived.by(() => {
@@ -821,6 +844,20 @@
 						</div>
 					{/if}
 				{/each}
+			</div>
+		{/if}
+
+		<!-- Rendiment per nivell d'oponent (aranya, Tres bandes) -->
+		{#if selMod === 1 && ratingBuckets.some((b) => b.wins + b.losses > 0)}
+			<div class="mb-4 rounded-xl bg-white p-3 ring-1 ring-slate-200">
+				<div class="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+					Rendiment per nivell d'oponent
+				</div>
+				<RadarChart buckets={ratingBuckets} />
+				<p class="mt-2 text-center text-[10px] text-slate-400">
+					Victòries i derrotes segons la mitjana de rànquing de l'oponent en el moment de la
+					partida.
+				</p>
 			</div>
 		{/if}
 

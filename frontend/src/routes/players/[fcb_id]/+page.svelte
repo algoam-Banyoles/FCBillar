@@ -5,6 +5,7 @@
 	import type { GameRow, PlayerSummary, Modalitat } from '$lib/types';
 	import StatCard from '$lib/components/StatCard.svelte';
 	import LineChart from '$lib/components/LineChart.svelte';
+	import RadarChart from '$lib/components/RadarChart.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import SortableTable from '$lib/components/SortableTable.svelte';
 	import Collapsible from '$lib/components/Collapsible.svelte';
@@ -75,6 +76,18 @@
 	let selectedMod: number | null = null;
 	let history: HistoryPoint[] = [];
 	let opensStanding: OpensStanding | null = null;
+
+	// Rendiment per nivell d'oponent (aranya). Només Tres bandes (codi 1).
+	interface RatingBucket {
+		bucket: string;
+		bucket_order: number;
+		label: string;
+		wins: number;
+		losses: number;
+		draws: number;
+	}
+	const TRES_BANDES = 1;
+	let ratingBuckets: RatingBucket[] = [];
 
 	let loading = true;
 	let notFound = false;
@@ -189,6 +202,24 @@
 			bestWorst = profRaw.best_worst;
 		}
 		games = gamesRaw;
+		await loadRating();
+	}
+
+	// L'aranya només té sentit en Tres bandes (de moment); altres modalitats la
+	// deixen buida.
+	async function loadRating() {
+		if (!fcbId || selectedMod !== TRES_BANDES) {
+			ratingBuckets = [];
+			return;
+		}
+		try {
+			const r = await api<{ buckets: RatingBucket[] }>(
+				`/api/players/${fcbId}/rating-breakdown?modalitat=${TRES_BANDES}`
+			);
+			ratingBuckets = r?.buckets ?? [];
+		} catch {
+			ratingBuckets = [];
+		}
 	}
 
 	async function loadHistory() {
@@ -297,6 +328,23 @@
 				: null}
 		/>
 	</div>
+
+	<!-- ── Rendiment per nivell d'oponent (aranya, Tres bandes) ───────────── -->
+	{#if selectedMod === TRES_BANDES}
+		<div class="mb-6">
+			<Collapsible title="Rendiment per nivell d'oponent" open={true}>
+				<Card>
+					<div class="p-4">
+						<RadarChart buckets={ratingBuckets} />
+						<p class="text-xs text-slate-500 mt-2 text-center">
+							Victòries i derrotes segons la mitjana de rànquing de l'oponent en el moment de
+							disputar la partida (Tres bandes).
+						</p>
+					</div>
+				</Card>
+			</Collapsible>
+		</div>
+	{/if}
 
 	<!-- ── Evolució al rànquing ───────────────────────────────────────────── -->
 	<div class="mb-6">

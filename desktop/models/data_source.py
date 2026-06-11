@@ -457,6 +457,31 @@ class DataSource:
             ).fetchall()
             return [dict(r) for r in rows]
 
+    def player_rating_breakdown(
+        self, fcb_id: str, modalitat_codi: int = 1
+    ) -> dict:
+        """Victòries/derrotes per nivell de l'oponent (mitjana de rànquing al moment
+        de la partida). De moment només Tres bandes. Vegeu `fcbillar.analytics`."""
+        from fcbillar.analytics import rating_breakdown, rating_breakdown_rows
+
+        with self._conn() as c:
+            pid_row = c.execute(
+                "SELECT id, nom FROM players WHERE fcb_id = ?", (fcb_id,)
+            ).fetchone()
+            if pid_row is None:
+                return {}
+            pid, nom = pid_row["id"], pid_row["nom"]
+            data = rating_breakdown(c, modalitat_codi, [pid])
+            buckets = rating_breakdown_rows(data.get(pid))
+            classified = sum(b["wins"] + b["losses"] + b["draws"] for b in buckets)
+            return {
+                "fcb_id": fcb_id,
+                "nom": nom,
+                "modalitat_codi": modalitat_codi,
+                "buckets": buckets,
+                "total_classified": classified,
+            }
+
     def player_best_worst_games(self, fcb_id: str, top: int = 5) -> dict[str, list[GameRow]]:
         """Millors i pitjors partides del jugador per mitjana de la partida (C/E)."""
         with self._conn() as c:
