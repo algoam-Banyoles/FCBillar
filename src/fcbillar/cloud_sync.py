@@ -508,6 +508,49 @@ def publish_lliga(
     return counts
 
 
+def publish_lliga_standings_hist(
+    db_path: Path | None = None, on_progress: Progress | None = None
+) -> dict[str, int]:
+    """Puja les classificacions HISTÒRIQUES de lliga (totes les temporades i fases).
+
+    Origen: taula SQLite `lliga_standings_hist`, omplerta per
+    `scripts/import_lliga_standings.py`. A diferència de `publish_lliga` (temporada
+    actual, calculada des dels encontres), aquí pugem el que s'ha scrapejat tal
+    qual, amb el NOM REAL del grup ("FINAL 1a DIVISIÓ"…), perquè l'app germana
+    pugui filtrar per fase FINAL i mostrar el podi real per temporada/divisió.
+    """
+    prog: Progress = on_progress or (lambda level, msg: None)
+    db_path = db_path or get_settings().db_path
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    sb = get_client()
+
+    try:
+        src = conn.execute(
+            "SELECT temporada, lliga, divisio, grup, posicio, equip, pm, pp "
+            "FROM lliga_standings_hist"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        conn.close()
+        prog("warn", "lliga_standings_hist no existeix a la BD local; res a publicar")
+        return {"lliga_standings_hist": 0}
+
+    rows = [
+        {
+            "temporada": r["temporada"], "lliga": r["lliga"], "divisio": r["divisio"],
+            "grup": r["grup"], "posicio": r["posicio"], "equip": r["equip"],
+            "pm": r["pm"], "pp": r["pp"],
+        }
+        for r in src
+    ]
+    n = _upsert(
+        sb, "lliga_standings_hist", rows,
+        "temporada,lliga,divisio,grup,equip", prog,
+    )
+    conn.close()
+    return {"lliga_standings_hist": n}
+
+
 def publish_copa(
     db_path: Path | None = None, on_progress: Progress | None = None
 ) -> dict[str, int]:

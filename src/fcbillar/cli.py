@@ -708,6 +708,7 @@ def publish_cloud_cmd() -> None:
         publish_lliga,
         publish_lliga_encontres,
         publish_lliga_player_rankings,
+        publish_lliga_standings_hist,
         publish_open_partides,
         publish_open_ranking,
         publish_opens,
@@ -723,6 +724,7 @@ def publish_cloud_cmd() -> None:
         counts = publish_rankings(on_progress=_prog)
         counts.update(publish_games(on_progress=_prog))
         counts.update(publish_lliga(on_progress=_prog))
+        counts.update(publish_lliga_standings_hist(on_progress=_prog))
         counts.update(publish_copa(on_progress=_prog))
         counts.update(publish_opens(on_progress=_prog))
         counts.update(publish_lliga_player_rankings(on_progress=_prog))
