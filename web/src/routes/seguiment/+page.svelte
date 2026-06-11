@@ -23,6 +23,8 @@
 	let clubsMap = $state<Map<string, string>>(new Map());
 	let allClubs = $state<{ fcb_id: string; nom: string }[]>([]);
 	let rankMap = $state<Map<string, { posicio: number; mitjana: number }>>(new Map());
+	let projectedMap = $state<Map<string, number>>(new Map());
+	let latestRankSeq = $state<number | null>(null);
 	let series = $state<Serie[]>([]);
 	let loading = $state(true);
 	let clubQ = $state('');
@@ -43,6 +45,7 @@
 		allClubs = cl ?? [];
 		clubsMap = new Map((cl ?? []).map((c) => [c.fcb_id, c.nom]));
 		const latest = maxR?.[0]?.num_seq;
+		latestRankSeq = latest ?? null;
 		if (latest != null) {
 			const { data: re } = await supabase
 				.from('ranking_entries')
@@ -53,6 +56,120 @@
 		}
 		loading = false;
 	});
+
+	$effect(() => {
+		const clubIds = $clubFollows;
+		const players = allPlayers;
+		const seq = latestRankSeq;
+		loadClubProjections(
+			players.filter((p) => p.club_fcb_id && clubIds.includes(p.club_fcb_id) && rankMap.has(p.fcb_id)),
+			seq
+		);
+	});
+
+	async function loadClubProjections(
+		players: { fcb_id: string; nom: string; club_fcb_id: string | null }[],
+		seq: number | null
+	) {
+		if (!players.length || seq == null) {
+			projectedMap = new Map();
+			return;
+		}
+		const ids = players.map((p) => p.fcb_id);
+		const names = players.map((p) => p.nom);
+		const [year, month] = ymFromSeq(seq);
+		const cutoff = `${year}-${String(month).padStart(2, '0')}-01`;
+		const gameCols =
+			'id,data_partida,competicio,player1_fcb_id,player1_nom,caramboles1,player2_fcb_id,player2_nom,caramboles2,entrades';
+		const copaCols =
+			'encontre_id,ordre,jugador_local,caramboles_local,jugador_visitant,caramboles_visitant,entrades';
+		const [g1, g2, cl, cv] = await Promise.all([
+			loadGamesForSide('player1_fcb_id', ids, gameCols),
+			loadGamesForSide('player2_fcb_id', ids, gameCols),
+			loadCopaForSide('jugador_local', names, copaCols),
+			loadCopaForSide('jugador_visitant', names, copaCols)
+		]);
+		const games = [...new Map([...g1, ...g2].map((g) => [g.id, g])).values()];
+		const byId = new Map(ids.map((id) => [id, games.filter((g) => g.player1_fcb_id === id || g.player2_fcb_id === id)]));
+		const copaGames = [
+			...new Map([...cl, ...cv].map((cp) => [`${cp.encontre_id}:${cp.ordre}`, cp])).values()
+		];
+		const result = new Map<string, number>();
+		for (const player of players) {
+			const playerGames = byId.get(player.fcb_id) ?? [];
+			const copaSignatures = new Set(
+				playerGames
+					.filter((g) => g.competicio === 'COPA')
+					.map((g) => gameSignature(g.player1_nom, g.caramboles1, g.player2_nom, g.caramboles2, g.entrades))
+			);
+			const pending = copaGames
+				.filter(
+					(cp) =>
+						(cp.jugador_local === player.nom || cp.jugador_visitant === player.nom) &&
+						!copaSignatures.has(
+							gameSignature(
+								cp.jugador_local,
+								cp.caramboles_local,
+								cp.jugador_visitant,
+								cp.caramboles_visitant,
+								cp.entrades
+							)
+						)
+				)
+				.sort((a, b) => (b.encontre_id ?? 0) - (a.encontre_id ?? 0) || (b.ordre ?? 0) - (a.ordre ?? 0))
+				.slice(0, 15);
+			const sorted = [...playerGames].sort((a, b) => {
+				if ((a.data_partida ?? '') !== (b.data_partida ?? '')) return (b.data_partida ?? '').localeCompare(a.data_partida ?? '');
+				return playerAverage(b, player.fcb_id) - playerAverage(a, player.fcb_id);
+			});
+			const recent = sorted.slice(0, Math.max(0, 15 - pending.length));
+			const hasChanges = sorted.some((g) => (g.data_partida ?? '') >= cutoff) || pending.length > 0;
+			if (!hasChanges) continue;
+			let caramboles = recent.reduce((sum, g) => sum + playerCaramboles(g, player.fcb_id), 0);
+			let entrades = recent.reduce((sum, g) => sum + (g.entrades ?? 0), 0);
+			for (const cp of pending) {
+				caramboles += cp.jugador_local === player.nom ? (cp.caramboles_local ?? 0) : (cp.caramboles_visitant ?? 0);
+				entrades += cp.entrades ?? 0;
+			}
+			if (entrades) result.set(player.fcb_id, caramboles / entrades);
+		}
+		projectedMap = result;
+	}
+
+	async function loadGamesForSide(side: 'player1_fcb_id' | 'player2_fcb_id', ids: string[], columns: string) {
+		const result: any[] = [];
+		for (let from = 0; ; from += 1000) {
+			const { data, error } = await supabase
+				.from('games')
+				.select(columns)
+				.eq('modalitat_codi', 1)
+				.in(side, ids)
+				.order('data_partida', { ascending: false })
+				.range(from, from + 999);
+			if (error) throw error;
+			result.push(...(data ?? []));
+			if (!data || data.length < 1000) return result;
+		}
+	}
+	async function loadCopaForSide(side: 'jugador_local' | 'jugador_visitant', names: string[], columns: string) {
+		const result: any[] = [];
+		for (let from = 0; ; from += 1000) {
+			const { data, error } = await supabase.from('copa_partides').select(columns).in(side, names).range(from, from + 999);
+			if (error) throw error;
+			result.push(...(data ?? []));
+			if (!data || data.length < 1000) return result;
+		}
+	}
+
+	function gameSignature(p1: string | null, c1: number | null, p2: string | null, c2: number | null, ent: number | null) {
+		return [`${(p1 ?? '').toLowerCase()}:${c1 ?? ''}`, `${(p2 ?? '').toLowerCase()}:${c2 ?? ''}`].sort().join('|') + `|${ent ?? ''}`;
+	}
+	function playerCaramboles(g: any, id: string) {
+		return (g.player1_fcb_id === id ? g.caramboles1 : g.caramboles2) ?? 0;
+	}
+	function playerAverage(g: any, id: string) {
+		return g.entrades ? playerCaramboles(g, id) / g.entrades : 0;
+	}
 
 	$effect(() => {
 		loadSeries($follows);
@@ -218,7 +335,12 @@
 							<span class="w-5 shrink-0 text-center text-xs font-semibold tabular-nums text-slate-400">{i + 1}</span>
 							<a href="/jugador/{p.fcb_id}" class="min-w-0 flex-1 truncate text-sm font-medium active:underline">{p.nom}</a>
 							{#if p.rank}
-								<span class="shrink-0 font-mono text-xs tabular-nums text-slate-500">#{p.rank.posicio} · {p.rank.mitjana?.toFixed(3)}</span>
+								<span class="shrink-0 font-mono text-xs tabular-nums text-slate-500">
+									#{p.rank.posicio} · {p.rank.mitjana?.toFixed(3)}
+									{#if projectedMap.has(p.fcb_id)}
+										<span class="font-bold text-blue-600"> → prev. {projectedMap.get(p.fcb_id)?.toFixed(3)}</span>
+									{/if}
+								</span>
 							{/if}
 						</li>
 					{/each}
