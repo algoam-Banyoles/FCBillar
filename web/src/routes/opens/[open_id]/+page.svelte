@@ -24,19 +24,36 @@
 		error = null;
 		expanded = null;
 		try {
-			const [{ data: o }, { data: cl, error: e }, { data: op }] = await Promise.all([
+			const [{ data: o }, { data: cl, error: e }, op] = await Promise.all([
 				supabase.from('opens').select('*').eq('open_id', id).maybeSingle(),
 				supabase.from('open_classifications').select('*').eq('open_id', id).order('posicio'),
-				supabase.from('open_partides').select('*').eq('open_id', id)
+				loadAllGames(id)
 			]);
 			if (e) throw e;
 			open = (o ?? null) as Open | null;
 			rows = (cl ?? []) as OpenClassification[];
-			partides = op ?? [];
+			partides = op;
 		} catch (e) {
 			error = (e as Error).message;
 		} finally {
 			loading = false;
+		}
+	}
+
+	async function loadAllGames(id: number) {
+		const pageSize = 1000;
+		const result: any[] = [];
+		for (let from = 0; ; from += pageSize) {
+			const { data, error: gamesError } = await supabase
+				.from('open_partides')
+				.select('*')
+				.eq('open_id', id)
+				.order('fase_id')
+				.order('ordre')
+				.range(from, from + pageSize - 1);
+			if (gamesError) throw gamesError;
+			result.push(...(data ?? []));
+			if (!data || data.length < pageSize) return result;
 		}
 	}
 

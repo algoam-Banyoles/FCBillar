@@ -16,8 +16,10 @@ El parser unificat detecta quants jugadors hi ha a la primera fila.
 
 from __future__ import annotations
 
+import argparse
 import re
 import sqlite3
+from contextlib import suppress
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
@@ -94,21 +96,37 @@ def page_id(url: str) -> int:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--tournaments",
+        help="IDs externs separats per comes; per defecte processa tots els torneigs",
+    )
+    args = parser.parse_args()
+    selected = (
+        {int(value) for value in args.tournaments.split(",")}
+        if args.tournaments
+        else None
+    )
+
     s = get_settings()
     conn = sqlite3.connect(str(s.db_path))
     conn.row_factory = sqlite3.Row
     opens = conn.execute(
         "SELECT DISTINCT torneig_id_extern, divisio_id_extern FROM torneigs_individuals"
     ).fetchall()
+    if selected is not None:
+        opens = [row for row in opens if row["torneig_id_extern"] in selected]
     total = 0
     with ScraperClient(s) as cl:
         for i, o in enumerate(opens, 1):
             t, d = o["torneig_id_extern"], o["divisio_id_extern"]
             phase_html: list[str] = []
-            try:
+            with suppress(Exception):
                 phase_html.append(cl.fetch_html(f"{BASE}/ca/individuals/fases/{t}/{d}"))
-            except Exception:  # noqa: BLE001
-                pass
+            with suppress(Exception):
+                phase_html.append(
+                    cl.fetch_html(f"{BASE}/ca/historial/fasesIndividual/{t}/{d}")
+                )
             if not phase_html:
                 print(f"[{i}/{len(opens)}] {t}/{d}: FAIL fases", flush=True)
                 continue
@@ -121,7 +139,7 @@ def main() -> None:
             for group_url in dict.fromkeys(group_pages):
                 try:
                     group_html = cl.fetch_html(group_url)
-                except Exception:  # noqa: BLE001
+                except Exception:
                     continue
                 pages.extend(linked_pages(group_html, _GAME_PAGE_RE))
 
@@ -130,7 +148,7 @@ def main() -> None:
             for url in dict.fromkeys(pages):
                 try:
                     html = cl.fetch_html(url)
-                except Exception:  # noqa: BLE001
+                except Exception:
                     continue
                 for g in parse_partides(html):
                     row = (
