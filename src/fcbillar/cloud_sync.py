@@ -661,24 +661,29 @@ def publish_opens(
     # `tipus` (open/campionat) es deriva del nom amb el classificador compartit,
     # perquè el frontend filtri per camp i no per heurística de string. El nom es
     # neteja de manera defensiva (sufix redundant) per si la BD no s'ha netejat.
-    from fcbillar.categories import short_divisio_inline
+    from fcbillar.categories import short_divisio_inline, unify_modalitat
     from fcbillar.torneig_naming import clean_torneig_nom, torneig_tipus
 
-    opens = [
-        {
+    def _open_nom(raw: str, tipus: str) -> str:
+        # Nom net + divisió curta ("TRES BANDES - 1ª DIVISIÓ" → "TRES BANDES - 1a").
+        # Als campionats, a més, s'unifica la modalitat i es treu el prefix
+        # "Campionat Catalunya" → "Tres Bandes - 1a".
+        nom = short_divisio_inline(clean_torneig_nom(raw))
+        return unify_modalitat(nom) if tipus == "campionat" else nom
+
+    opens = []
+    for r in conn.execute(
+        "SELECT ti.id, ti.nom, ti.temporada_id, te.nom AS temp "
+        "FROM torneigs_individuals ti LEFT JOIN temporades te ON te.id = ti.temporada_id"
+    ):
+        tipus = torneig_tipus(r["nom"])
+        opens.append({
             "open_id": r["id"],
-            # Nom net + referència a divisió uniformitzada a forma curta
-            # ("TRES BANDES - 1ª DIVISIÓ" → "TRES BANDES - 1a").
-            "nom": short_divisio_inline(clean_torneig_nom(r["nom"])),
-            "tipus": torneig_tipus(r["nom"]),
+            "nom": _open_nom(r["nom"], tipus),
+            "tipus": tipus,
             "temporada_id": r["temporada_id"],
             "temporada": r["temp"],
-        }
-        for r in conn.execute(
-            "SELECT ti.id, ti.nom, ti.temporada_id, te.nom AS temp "
-            "FROM torneigs_individuals ti LEFT JOIN temporades te ON te.id = ti.temporada_id"
-        )
-    ]
+        })
     seen: set[tuple[int, str]] = set()
     classifs = []
     for r in conn.execute(

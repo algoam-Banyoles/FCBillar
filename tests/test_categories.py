@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from fcbillar.categories import norm_divisio, norm_grup, short_divisio_inline
+from fcbillar.categories import (
+    norm_divisio,
+    norm_grup,
+    short_divisio_inline,
+    unify_modalitat,
+)
 
 
 @pytest.mark.parametrize(
@@ -64,3 +69,23 @@ def test_norm_grup(raw, expected):
 )
 def test_short_divisio_inline(raw, expected):
     assert short_divisio_inline(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("TRES BANDES - 1a", "Tres Bandes - 1a"),
+        ("3 BANDES - 1a", "Tres Bandes - 1a"),
+        ("CAMPIONAT CATALUNYA 3 BANDES - 1a", "Tres Bandes - 1a"),
+        ("TRES BANDES - HONOR", "Tres Bandes - HONOR"),
+        ("QUADRE 47/2 - 2a A", "Quadre 47/2 - 2a A"),
+        ("QUADRE 71/2 - HONOR", "Quadre 71/2 - HONOR"),
+        ("LLIURE - FEMENÍ", "Lliure - FEMENÍ"),
+        ("BANDA - 3a", "Banda - 3a"),
+        ("CAMPIONAT CATALUNYA HISTÒRIC LLIURE - CATEGORIA NO PUBLICADA", "Lliure - CATEGORIA NO PUBLICADA"),
+        # "BANDES" no s'ha de confondre amb la modalitat "BANDA".
+        ("3 BANDES - 2a", "Tres Bandes - 2a"),
+    ],
+)
+def test_unify_modalitat(raw, expected):
+    assert unify_modalitat(raw) == expected

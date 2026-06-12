@@ -105,3 +105,33 @@ def short_divisio_inline(name: str | None) -> str | None:
         return out
 
     return _INLINE_DIV_RE.sub(repl, name).strip()
+
+
+# Prefix redundant dels Campionats de Catalunya (el `tipus` ja marca que ho és).
+_CAMP_PREFIX = re.compile(r"^\s*CAMPIONAT\s+(?:DE\s+)?CATALUNYA\s+(?:HIST[ÒO]RIC\s+)?", re.IGNORECASE)
+# Modalitats de carambola, a forma canònica. Quadre abans (porta números); "3/TRES
+# BANDES" abans de BANDA perquè \bBANDA\b no casa amb "BANDES".
+_MODALITATS = (
+    (re.compile(r"\bQUADRE\s*47\s*/\s*2\b", re.IGNORECASE), "Quadre 47/2"),
+    (re.compile(r"\bQUADRE\s*71\s*/\s*2\b", re.IGNORECASE), "Quadre 71/2"),
+    (re.compile(r"\b(?:TRES|3)\s+BANDES\b", re.IGNORECASE), "Tres Bandes"),
+    (re.compile(r"\bLLIURE\b", re.IGNORECASE), "Lliure"),
+    (re.compile(r"\bBANDA\b", re.IGNORECASE), "Banda"),
+)
+
+
+def unify_modalitat(name: str | None) -> str | None:
+    """Unifica la modalitat (i treu el prefix 'Campionat Catalunya') als noms de campionat.
+
+    'CAMPIONAT CATALUNYA 3 BANDES - 1a' → 'Tres Bandes - 1a'
+    'TRES BANDES - HONOR'               → 'Tres Bandes - HONOR'
+    'QUADRE 47/2 - 2a A'                → 'Quadre 47/2 - 2a A'
+
+    Pensat per a torneigs de tipus 'campionat'; no toca el nom propi dels opens.
+    """
+    if not name:
+        return name
+    s = _CAMP_PREFIX.sub("", name)
+    for rx, repl in _MODALITATS:
+        s = rx.sub(repl, s)
+    return re.sub(r"\s{2,}", " ", s).strip()
