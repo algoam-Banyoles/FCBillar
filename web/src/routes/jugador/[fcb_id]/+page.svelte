@@ -46,6 +46,25 @@
 				if (d.pos != null && (best == null || d.pos < best)) best = d.pos;
 		return best;
 	});
+	// Rànquing del Circuit Català Tres Bandes Femení (independent del general).
+	let openRankFem = $state<
+		{ ronda: number; posicio: number; punts: number; detall?: { pos: number | null }[] }[]
+	>([]);
+	const openFemCur = $derived.by(() => {
+		if (!openRankFem.length) return null;
+		const maxR = Math.max(...openRankFem.map((o) => o.ronda));
+		return openRankFem.find((o) => o.ronda === maxR) ?? null;
+	});
+	const openFemBest = $derived(
+		openRankFem.length ? Math.min(...openRankFem.map((o) => o.posicio)) : null
+	);
+	const openFemBestResult = $derived.by(() => {
+		let best: number | null = null;
+		for (const o of openRankFem)
+			for (const d of o.detall ?? [])
+				if (d.pos != null && (best == null || d.pos < best)) best = d.pos;
+		return best;
+	});
 	// Agrupa temporades consecutives al mateix club en un sol tram.
 	const clubGroups = $derived.by(() => {
 		const sorted = [...clubHist].sort((a, b) => a.temporada.localeCompare(b.temporada));
@@ -264,6 +283,13 @@
 				.eq('player_fcb_id', id)
 				.eq('genere', 'general');
 			openRank = or ?? [];
+
+			const { data: orf } = await supabase
+				.from('open_ranking')
+				.select('ronda, posicio, punts, detall')
+				.eq('player_fcb_id', id)
+				.eq('genere', 'femeni');
+			openRankFem = orf ?? [];
 
 			const present = [...new Set(games.map((x) => x.modalitat_codi).filter((v) => v != null))];
 			const { data: md } = await supabase
@@ -836,6 +862,32 @@
 					</div>
 					<div class="text-center">
 						<div class="font-mono text-lg font-bold tabular-nums">{openCur?.punts ?? '—'}</div>
+						<div class="text-[10px] uppercase tracking-wide text-slate-400">punts</div>
+					</div>
+				</div>
+			</div>
+		{/if}
+
+		{#if openRankFem.length}
+			<div class="mb-4 rounded-xl bg-rose-50 p-3 ring-1 ring-rose-200">
+				<div class="mb-2 text-[10px] font-bold uppercase tracking-wide text-rose-400">
+					Rànquing Circuit Català Femení 3 Bandes
+				</div>
+				<div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+					<div class="text-center">
+						<div class="font-mono text-lg font-bold tabular-nums">#{openFemCur?.posicio ?? '—'}</div>
+						<div class="text-[10px] uppercase tracking-wide text-slate-400">posició actual</div>
+					</div>
+					<div class="text-center">
+						<div class="font-mono text-lg font-bold tabular-nums text-emerald-600">#{openFemBest ?? '—'}</div>
+						<div class="text-[10px] uppercase tracking-wide text-slate-400">millor posició</div>
+					</div>
+					<div class="text-center">
+						<div class="font-mono text-lg font-bold tabular-nums text-amber-500">#{openFemBestResult ?? '—'}</div>
+						<div class="text-[10px] uppercase tracking-wide text-slate-400">millor en una prova</div>
+					</div>
+					<div class="text-center">
+						<div class="font-mono text-lg font-bold tabular-nums">{openFemCur?.punts ?? '—'}</div>
 						<div class="text-[10px] uppercase tracking-wide text-slate-400">punts</div>
 					</div>
 				</div>

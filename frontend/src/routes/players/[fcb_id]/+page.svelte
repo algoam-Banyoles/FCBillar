@@ -77,6 +77,18 @@
 	let history: HistoryPoint[] = [];
 	let opensStanding: OpensStanding | null = null;
 
+	// Rànquing del Circuit Català Tres Bandes Femení (independent del general).
+	interface OpensFemeniStanding {
+		in_ranking: boolean;
+		nom?: string;
+		position?: number;
+		total_points?: number;
+		opens_played?: number;
+		best_position?: number;
+		ronda_nom?: string | null;
+	}
+	let opensFemeni: OpensFemeniStanding | null = null;
+
 	// Rendiment per nivell d'oponent (aranya). Només Tres bandes (codi 1).
 	interface RatingBucket {
 		bucket: string;
@@ -175,6 +187,7 @@
 			await loadFiltered();
 			await loadHistory();
 			loadOpens();
+			loadOpensFemeni();
 		} catch (e) {
 			console.error(e);
 		} finally {
@@ -247,6 +260,16 @@
 		}
 	}
 
+	async function loadOpensFemeni() {
+		if (!fcbId) return;
+		opensFemeni = null;
+		try {
+			opensFemeni = await api<OpensFemeniStanding>(`/api/players/${fcbId}/opens-femeni`);
+		} catch {
+			opensFemeni = null;
+		}
+	}
+
 	onMount(() => {
 		// loadAll is triggered reactively via $: fcbId, loadAll()
 		// but we also call it explicitly in case the reactive block
@@ -278,6 +301,19 @@
 					>{opensStanding.opens_played} opens jugats · millor prova {opensStanding.max_single_open}</span
 				>
 				<a href="/opens/ranking" class="ml-auto text-blue-700 hover:underline">Veure rànquing d'opens →</a>
+			</div>
+		</div>
+	{/if}
+
+	{#if opensFemeni?.in_ranking}
+		<div class="card mb-4 border-rose-200 bg-rose-50">
+			<div class="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
+				<span class="font-semibold text-rose-900">Rànquing Circuit Català Femení</span>
+				<span>Posició <strong>#{opensFemeni.position}</strong></span>
+				<span><strong>{opensFemeni.total_points}</strong> punts (últimes 5 proves)</span>
+				<span class="text-slate-500"
+					>{opensFemeni.opens_played} proves jugades · millor posició #{opensFemeni.best_position}</span
+				>
 			</div>
 		</div>
 	{/if}

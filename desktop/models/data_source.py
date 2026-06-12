@@ -482,6 +482,40 @@ class DataSource:
                 "total_classified": classified,
             }
 
+    def player_opens_femeni(self, fcb_id: str) -> dict:
+        """Posició de la jugadora al Rànquing del Circuit Català Tres Bandes Femení.
+
+        Independent del Rànquing Català d'Opens general. Vegeu
+        `fcbillar.opens_femeni`."""
+        from fcbillar.opens_femeni import femeni_ranking_rows
+
+        nom = self.player_nom(fcb_id)
+        with self._conn() as c:
+            rows = femeni_ranking_rows(c)
+        if not rows:
+            return {"in_ranking": False, "nom": nom}
+        max_ronda = max(r["ronda"] for r in rows)
+        current = [r for r in rows if r["ronda"] == max_ronda]
+        me = next((r for r in current if r["player_fcb_id"] == fcb_id), None)
+        mine = [r for r in rows if r["player_fcb_id"] == fcb_id]
+        best_position = min((r["posicio"] for r in mine), default=None)
+        if me is None:
+            return {"in_ranking": False, "nom": nom}
+        return {
+            "in_ranking": True,
+            "nom": nom,
+            "position": me["posicio"],
+            "total_points": me["punts"],
+            "opens_played": me["opens_jugats"],
+            "best_position": best_position,
+            "ronda_nom": me["ronda_nom"],
+            "ronda_temp": me["ronda_temp"],
+            "breakdown": [
+                {"name": d["open"], "season": d["temp"], "points": d["punts"], "pos": d["pos"]}
+                for d in me["detall"]
+            ],
+        }
+
     def player_best_worst_games(self, fcb_id: str, top: int = 5) -> dict[str, list[GameRow]]:
         """Millors i pitjors partides del jugador per mitjana de la partida (C/E)."""
         with self._conn() as c:

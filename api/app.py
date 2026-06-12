@@ -111,6 +111,15 @@ def player_opens(fcb_id: str) -> dict:
     return {"in_ranking": False, "nom": nom}
 
 
+@app.get("/api/players/{fcb_id}/opens-femeni")
+def player_opens_femeni(fcb_id: str) -> dict:
+    """Posició de la jugadora al Rànquing del Circuit Català Tres Bandes Femení."""
+    nom = ds().player_nom(fcb_id)
+    if not nom:
+        raise HTTPException(status_code=404, detail="Jugador no trobat")
+    return ds().player_opens_femeni(fcb_id)
+
+
 @app.post("/api/opens/import-inscrits")
 async def opens_import_inscrits(
     request: Request, name: str = "", season: str = "2025-2026"

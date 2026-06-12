@@ -711,6 +711,7 @@ def publish_cloud_cmd() -> None:
         publish_lliga_standings_hist,
         publish_open_partides,
         publish_open_ranking,
+        publish_open_ranking_femeni,
         publish_opens,
         publish_player_clubs,
         publish_rankings,
@@ -733,6 +734,7 @@ def publish_cloud_cmd() -> None:
         counts.update(publish_copa_encontres(on_progress=_prog))
         counts.update(publish_open_partides(on_progress=_prog))
         counts.update(publish_open_ranking(on_progress=_prog))
+        counts.update(publish_open_ranking_femeni(on_progress=_prog))
         counts.update(publish_player_clubs(on_progress=_prog))
         counts.update(publish_rating_buckets(on_progress=_prog))
     except Exception as exc:  # noqa: BLE001

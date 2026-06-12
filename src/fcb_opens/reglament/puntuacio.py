@@ -26,6 +26,42 @@ INCOMPAREIXENCA_INJUSTIFICADA_PENALTY = -20  # Article IV.3
 FORCA_MAJOR_POINTS = 0  # Article IV.4 (with supporting documentation)
 
 
+# Article XVI del Reglament Circuit Català Tres Bandes Femení (23-Oct-2025).
+# El circuit femení té dues taules de punts segons el tipus de prova: el
+# Campionat de Catalunya (puntuacions més altes) i els Opens. Només es tabulen
+# les 12 primeres posicions (els camps femenins són petits); més enllà s'aplica
+# el valor de la 12a posició com a terra. Transcrit literalment del PDF.
+_FEMENI_CAMPIONAT_POINTS: dict[int, int] = {
+    1: 150, 2: 120, 3: 90, 4: 90, 5: 70, 6: 68,
+    7: 66, 8: 64, 9: 44, 10: 42, 11: 40, 12: 38,
+}
+_FEMENI_OPEN_POINTS: dict[int, int] = {
+    1: 100, 2: 80, 3: 60, 4: 60, 5: 40, 6: 38,
+    7: 36, 8: 34, 9: 20, 10: 18, 11: 16, 12: 14,
+}
+
+
+def points_for_position_femeni(position: int, is_campionat: bool) -> int:
+    """Punts del circuit femení per posició final en una prova.
+
+    Article XVI del Reglament Circuit Català Tres Bandes Femení. `is_campionat`
+    tria la taula del Campionat de Catalunya (True) o la d'Open (False).
+
+    >>> points_for_position_femeni(1, True)
+    150
+    >>> points_for_position_femeni(1, False)
+    100
+    >>> points_for_position_femeni(12, False)
+    14
+    >>> points_for_position_femeni(20, False)  # més enllà de la 12a: terra
+    14
+    """
+    if position < 1:
+        raise ValueError(f"Position must be >= 1, got {position}")
+    table = _FEMENI_CAMPIONAT_POINTS if is_campionat else _FEMENI_OPEN_POINTS
+    return table[position] if position <= 12 else table[12]
+
+
 def points_for_position(position: int) -> int:
     """Return the open points a player gets for finishing at the given position.
 

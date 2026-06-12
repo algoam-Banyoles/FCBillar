@@ -1206,6 +1206,32 @@ def publish_open_ranking(
     return {"open_ranking": n}
 
 
+def publish_open_ranking_femeni(
+    db_path: Path | None = None, on_progress: Progress | None = None
+) -> dict[str, int]:
+    """Rànquing del Circuit Català Tres Bandes Femení (genere='femeni').
+
+    Independent del general: proves femenines (Campionat + Opens) amb taula de
+    punts pròpia (Art. XVI) i finestra de 5 proves (Art. XVII). Vegeu
+    `fcbillar.opens_femeni`."""
+    from fcbillar.opens_femeni import femeni_ranking_rows
+
+    prog: Progress = on_progress or (lambda level, msg: None)
+    db_path = db_path or get_settings().db_path
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    rows = femeni_ranking_rows(conn)
+    conn.close()
+    for r in rows:
+        r["jugador"] = _disp(r["jugador"])
+    if not rows:
+        prog("ok", "open_ranking (femeni): 0 files")
+        return {"open_ranking_femeni": 0}
+    sb = get_client()
+    n = _upsert(sb, "open_ranking", rows, "genere,ronda,player_fcb_id", prog)
+    return {"open_ranking_femeni": n}
+
+
 def publish_player_clubs(
     db_path: Path | None = None, on_progress: Progress | None = None
 ) -> dict[str, int]:
