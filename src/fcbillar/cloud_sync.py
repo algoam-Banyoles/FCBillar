@@ -563,14 +563,20 @@ def publish_lliga_standings_hist(
         prog("warn", "lliga_standings_hist no existeix a la BD local; res a publicar")
         return {"lliga_standings_hist": 0}
 
-    rows = [
-        {
-            "temporada": r["temporada"], "lliga": r["lliga"], "divisio": r["divisio"],
-            "grup": r["grup"], "posicio": r["posicio"], "equip": r["equip"],
+    # Uniformitza les categories a forma curta ("4ª DIVISIÓ" → "4a", "GRUP A" → "A",
+    # "FINAL 4a DIVISIÓ" → "Final"). Dedup defensiu per la nova clau (norm pot
+    # col·lapsar variants ortogràfiques al mateix grup/divisió).
+    from fcbillar.categories import norm_divisio, norm_grup
+
+    by_pk: dict[tuple, dict] = {}
+    for r in src:
+        divisio, grup = norm_divisio(r["divisio"]), norm_grup(r["grup"])
+        by_pk[(r["temporada"], r["lliga"], divisio, grup, r["equip"])] = {
+            "temporada": r["temporada"], "lliga": r["lliga"], "divisio": divisio,
+            "grup": grup, "posicio": r["posicio"], "equip": r["equip"],
             "pm": r["pm"], "pp": r["pp"],
         }
-        for r in src
-    ]
+    rows = list(by_pk.values())
     n = _upsert(
         sb, "lliga_standings_hist", rows,
         "temporada,lliga,divisio,grup,equip", prog,
@@ -655,12 +661,15 @@ def publish_opens(
     # `tipus` (open/campionat) es deriva del nom amb el classificador compartit,
     # perquè el frontend filtri per camp i no per heurística de string. El nom es
     # neteja de manera defensiva (sufix redundant) per si la BD no s'ha netejat.
+    from fcbillar.categories import short_divisio_inline
     from fcbillar.torneig_naming import clean_torneig_nom, torneig_tipus
 
     opens = [
         {
             "open_id": r["id"],
-            "nom": clean_torneig_nom(r["nom"]),
+            # Nom net + referència a divisió uniformitzada a forma curta
+            # ("TRES BANDES - 1ª DIVISIÓ" → "TRES BANDES - 1a").
+            "nom": short_divisio_inline(clean_torneig_nom(r["nom"])),
             "tipus": torneig_tipus(r["nom"]),
             "temporada_id": r["temporada_id"],
             "temporada": r["temp"],
