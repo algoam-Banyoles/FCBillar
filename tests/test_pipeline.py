@@ -456,6 +456,92 @@ def test_ingest_lliga_encontre_enriches_existing_game(settings: StubSettings) ->
     assert row[5] is not None  # temporada derivada de 2025-09-27 = "2025-2026"
 
 
+def test_build_game_from_lliga_row_keeps_played_with_zero_entrades(
+    settings: StubSettings,
+) -> None:
+    """Una partida realment jugada (amb caramboles) NO s'ha de descartar encara
+    que les entrades constin a 0 a la federacio. Cas real: Jornada 12,
+    Banyoles A-Barcelona A, Ametller 28-27 Gutierrez amb Entrades 0."""
+    from fcbillar.pipeline import _build_game_from_lliga_row
+    from fcbillar.scraper.parsers import LligaPartidaRow
+
+    conn = ensure_schema(settings.db_path)
+    repo = Repository(conn)
+
+    row = LligaPartidaRow(
+        data_partida=date(2026, 1, 15),
+        modalitat="Tres bandes",
+        local_nom="AMETLLER CONGOST, LLUIS",
+        local_caramboles=28,
+        local_serie_major=4,
+        local_punts=2,
+        visitant_nom="GUTIERREZ CONTRERAS, ARNOLD",
+        visitant_caramboles=27,
+        visitant_serie_major=3,
+        visitant_punts=0,
+        entrades=0,
+        arbitre=None,
+        assistencia="Partit disputat",
+    )
+    game = _build_game_from_lliga_row(
+        row,
+        encontre_data=date(2026, 1, 15),
+        modalitat_codi_fcb=1,
+        competicio_nom="LLIGA",
+        local_equip_id=1,
+        visitant_equip_id=2,
+        encontre_lliga_id=10,
+        temporada_id=None,
+        repo=repo,
+        create_missing_players=True,
+    )
+    assert game is not None
+    assert game.caramboles1 == 28
+    assert game.caramboles2 == 27
+    assert game.entrades == 0
+
+
+def test_build_game_from_lliga_row_skips_real_walkover(
+    settings: StubSettings,
+) -> None:
+    """Una incompareixença real (cap resultat: 0 caramboles, 0 entrades, sense
+    assistència) sí que s'ha de seguir descartant."""
+    from fcbillar.pipeline import _build_game_from_lliga_row
+    from fcbillar.scraper.parsers import LligaPartidaRow
+
+    conn = ensure_schema(settings.db_path)
+    repo = Repository(conn)
+
+    row = LligaPartidaRow(
+        data_partida=date(2026, 1, 15),
+        modalitat="Tres bandes",
+        local_nom="JUGADOR LOCAL, A",
+        local_caramboles=0,
+        local_serie_major=0,
+        local_punts=0,
+        visitant_nom="JUGADOR VISITANT, B",
+        visitant_caramboles=0,
+        visitant_serie_major=0,
+        visitant_punts=0,
+        entrades=0,
+        arbitre=None,
+        assistencia=None,
+    )
+    game = _build_game_from_lliga_row(
+        row,
+        encontre_data=date(2026, 1, 15),
+        modalitat_codi_fcb=1,
+        competicio_nom="LLIGA",
+        local_equip_id=1,
+        visitant_equip_id=2,
+        encontre_lliga_id=10,
+        temporada_id=None,
+        repo=repo,
+        create_missing_players=True,
+    )
+    assert game is None
+
+
 # ---------------- unificació de noms de clubs ----------------
 
 
