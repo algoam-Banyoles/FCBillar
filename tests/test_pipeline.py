@@ -542,6 +542,77 @@ def test_build_game_from_lliga_row_skips_real_walkover(
     assert game is None
 
 
+class _FakeRepoDistLimit:
+    """Repo minim que nomes respon infer_lliga_distance_limit, per provar la regla."""
+
+    def __init__(self, dist: int | None, lim: int | None) -> None:
+        self._d = (dist, lim)
+
+    def infer_lliga_distance_limit(self, **_kwargs: object) -> tuple[int | None, int | None]:
+        return self._d
+
+
+def test_impute_lliga_entrades_full_distance_match() -> None:
+    """28-27 amb distancia 40: ningu hi arriba -> entrades = limit (50)."""
+    from fcbillar.pipeline import _impute_lliga_entrades
+
+    repo = _FakeRepoDistLimit(40, 50)
+    assert (
+        _impute_lliga_entrades(
+            repo,
+            lliga_id=36, divisio_id=148, grup_id=317,
+            modalitat_codi_fcb=1, caramboles1=28, caramboles2=27,
+        )
+        == 50
+    )
+
+
+def test_impute_lliga_entrades_someone_reached_distance() -> None:
+    """Si un jugador arriba a la distancia, la partida es va acabar abans del
+    limit i no es pot inferir -> None."""
+    from fcbillar.pipeline import _impute_lliga_entrades
+
+    repo = _FakeRepoDistLimit(40, 50)
+    assert (
+        _impute_lliga_entrades(
+            repo,
+            lliga_id=36, divisio_id=148, grup_id=317,
+            modalitat_codi_fcb=1, caramboles1=40, caramboles2=15,
+        )
+        is None
+    )
+
+
+def test_impute_lliga_entrades_uses_tres_bandes_constant_limit() -> None:
+    """A tres bandes el limit es 50 encara que no s'inferexi de les dades."""
+    from fcbillar.pipeline import _impute_lliga_entrades
+
+    repo = _FakeRepoDistLimit(40, None)  # limit no inferible del grup
+    assert (
+        _impute_lliga_entrades(
+            repo,
+            lliga_id=36, divisio_id=148, grup_id=317,
+            modalitat_codi_fcb=1, caramboles1=28, caramboles2=27,
+        )
+        == 50
+    )
+
+
+def test_impute_lliga_entrades_no_reference_data() -> None:
+    """Sense distancia de referencia no es pot imputar -> None."""
+    from fcbillar.pipeline import _impute_lliga_entrades
+
+    repo = _FakeRepoDistLimit(None, None)
+    assert (
+        _impute_lliga_entrades(
+            repo,
+            lliga_id=36, divisio_id=148, grup_id=317,
+            modalitat_codi_fcb=1, caramboles1=28, caramboles2=27,
+        )
+        is None
+    )
+
+
 # ---------------- unificació de noms de clubs ----------------
 
 

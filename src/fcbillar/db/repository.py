@@ -611,6 +611,40 @@ class Repository:
         )
         return True
 
+    def infer_lliga_distance_limit(
+        self,
+        *,
+        lliga_id: int,
+        divisio_id: int,
+        grup_id: int,
+        modalitat_codi_fcb: int,
+    ) -> tuple[int | None, int | None]:
+        """Infereix (distància, límit d'entrades) d'un grup+modalitat a partir de
+        les partides ja desades amb entrades>0.
+
+        - distància = màx. caràmboles del guanyador: la partida s'atura just en
+          assolir-la, així que cap guanyador la supera.
+        - límit d'entrades = màx. entrades observades: les partides que no arriben
+          a la distància van fins al límit d'entrades.
+
+        Retorna (None, None) si encara no hi ha cap partida de referència.
+        """
+        row = self.conn.execute(
+            """
+            SELECT MAX(MAX(COALESCE(g.caramboles1, 0), COALESCE(g.caramboles2, 0))) AS dist,
+                   MAX(g.entrades) AS lim
+            FROM games g
+            JOIN encontres_lliga en ON en.id = g.encontre_lliga_id
+            JOIN modalitats m ON m.id = g.modalitat_id
+            WHERE en.lliga_id = ? AND en.divisio_id = ? AND en.grup_id = ?
+              AND m.codi_fcb = ? AND g.entrades > 0
+            """,
+            (lliga_id, divisio_id, grup_id, modalitat_codi_fcb),
+        ).fetchone()
+        if row is None:
+            return None, None
+        return row["dist"], row["lim"]
+
     def link_game_to_ranking(self, link: RankingGameLink) -> None:
         ranking_id = self.get_ranking_id(link.ranking_num_seq, link.ranking_modalitat)
         player_id = self.get_player_id_by_fcb_id(link.player_fcb_id_origen)

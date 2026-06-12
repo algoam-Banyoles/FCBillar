@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 
 from fcbillar.config import Settings, get_settings
@@ -804,10 +804,30 @@ def ingest_lliga_encontre(
         if game is None:
             skipped += 1
             continue
-        # Enrich-only: la competició classifica la partida (encontre/equips) però
-        # NO crea games ni discuteix la modalitat (autèntica, de partideshome).
-        # Si la partida no ve de cap rànquing, no es crea.
+        # Cas normal: la partida ja ve de partideshome. La competició la classifica
+        # (encontre/equips/sèrie) però NO discuteix la modalitat (autèntica, de
+        # partideshome). Enriquim el game existent via signatura.
         if repo.enrich_game_by_signature(game):
+            upserted += 1
+            continue
+        # No hi ha cap game previ a enriquir. Si la partida es va jugar però porta
+        # entrades=0, la federació l'exclou de partideshome (no compta per la
+        # mitjana), així que el game no existeix enlloc. La creem des de la pàgina
+        # de lliga perquè els resultats de la competició quedin complets, imputant
+        # les entrades reals quan es pot deduir que va anar al límit d'entrades.
+        if not game.entrades:
+            imputed = _impute_lliga_entrades(
+                repo,
+                lliga_id=encontre.lliga_id,
+                divisio_id=encontre.divisio_id,
+                grup_id=encontre.grup_id,
+                modalitat_codi_fcb=game.modalitat_codi_fcb,
+                caramboles1=game.caramboles1,
+                caramboles2=game.caramboles2,
+            )
+            if imputed:
+                game = replace(game, entrades=imputed)
+            repo.upsert_game(game)
             upserted += 1
         else:
             skipped += 1
@@ -850,6 +870,42 @@ def _modalitat_codi_from_nom(nom: str | None, fallback: int) -> int:
     if not nom:
         return fallback
     return _MODALITAT_NOM_TO_CODI.get(" ".join(nom.strip().lower().split()), fallback)
+
+
+# Límit d'entrades conegut per modalitat (codi_fcb). A tres bandes sempre és 50.
+# Per a la resta de modalitats s'infereix de les dades del grup.
+_LLIGA_ENTRADES_LIMIT_BY_MODALITAT = {1: 50}  # 1 = tres bandes
+
+
+def _impute_lliga_entrades(
+    repo: Repository,
+    *,
+    lliga_id: int,
+    divisio_id: int,
+    grup_id: int,
+    modalitat_codi_fcb: int,
+    caramboles1: int | None,
+    caramboles2: int | None,
+) -> int | None:
+    """Infereix les entrades reals d'una partida jugada que consta amb entrades=0.
+
+    Si cap dels dos jugadors arriba a la distància del grup, la partida va anar
+    fins al límit d'entrades → retorna aquest límit (50 a tres bandes, o el màxim
+    observat al grup per a altres modalitats). Si algú arriba a la distància (la
+    partida es va acabar abans) o no hi ha dades de referència, retorna None.
+    """
+    dist, inferred_limit = repo.infer_lliga_distance_limit(
+        lliga_id=lliga_id,
+        divisio_id=divisio_id,
+        grup_id=grup_id,
+        modalitat_codi_fcb=modalitat_codi_fcb,
+    )
+    limit = _LLIGA_ENTRADES_LIMIT_BY_MODALITAT.get(modalitat_codi_fcb, inferred_limit)
+    if not dist or not limit:
+        return None
+    if max(caramboles1 or 0, caramboles2 or 0) < dist:
+        return limit
+    return None
 
 
 def _build_game_from_lliga_row(
