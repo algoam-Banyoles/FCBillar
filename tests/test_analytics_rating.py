@@ -1,40 +1,36 @@
 """Tests del rendiment per nivell d'oponent (fcbillar.analytics).
 
-Franges centrades en el nivell del jugador (±0,3 en passos de 0,1, cues
-agrupades) + indicadors (índex ponderat, creuament 50%)."""
+Franges per quantils (cada eix ~ el mateix nombre de partides) + indicadors
+(índex ponderat, creuament 50%)."""
 
 from __future__ import annotations
 
 import sqlite3
 
 from fcbillar.analytics import (
-    _centered_buckets,
     _crossover,
+    _quantile_buckets,
     _weighted_index,
     rating_breakdown,
 )
 from fcbillar.db.migrations import ensure_schema
 
 
-def test_centered_buckets_window_and_tails() -> None:
-    # Jugador de nivell 0,6 → cues < 0,3 i > 0,9, mig de 0,1 en 0,1.
-    games = [(1, 0.2), (1, 0.35), (-1, 0.6), (1, 0.89), (-1, 0.95)]
-    b = _centered_buckets(games, 0.6)
-    assert [x["label"] for x in b] == [
-        "< 0,3", "0,3-0,4", "0,4-0,5", "0,5-0,6", "0,6-0,7", "0,7-0,8", "0,8-0,9", "> 0,9"
-    ]
-    assert b[0]["wins"] == 1  # 0,2 → cua inferior
-    assert b[1]["wins"] == 1  # 0,35 → 0,3-0,4
-    assert b[4]["losses"] == 1  # 0,6 → 0,6-0,7
-    assert b[6]["wins"] == 1  # 0,89 → 0,8-0,9
-    assert b[-1]["losses"] == 1  # 0,95 → cua superior
+def test_quantile_equal_counts() -> None:
+    # 16 partides amb mitjanes distintes → 8 franges de 2 partides cada una.
+    games = [(1 if i % 2 else -1, round(0.10 + i * 0.10, 2)) for i in range(16)]
+    buckets = _quantile_buckets(games, 8)
+    assert len(buckets) == 8
+    assert all(b["wins"] + b["losses"] + b["draws"] == 2 for b in buckets)
+    assert buckets[0]["rating_min"] <= buckets[-1]["rating_max"]
 
 
-def test_centered_buckets_drops_low_tail_for_weak_player() -> None:
-    # Nivell baix: la cua inferior cauria sota 0,0, així que no s'hi posa.
-    b = _centered_buckets([(1, 0.2)], 0.2)
-    assert not any(x["label"].startswith("<") for x in b)
-    assert b[-1]["label"] == "> 0,5"
+def test_quantile_keeps_equal_ratings_together() -> None:
+    # Sis rivals de 0,50 no es poden partir entre franges.
+    games = [(1, 0.5)] * 6 + [(-1, 0.9), (-1, 1.0)]
+    buckets = _quantile_buckets(games, 2)
+    assert buckets[0]["wins"] + buckets[0]["losses"] == 6  # tots els 0,50 junts
+    assert buckets[0]["label"] == "0,50"
 
 
 def test_weighted_index_rewards_beating_strong() -> None:
@@ -43,14 +39,13 @@ def test_weighted_index_rewards_beating_strong() -> None:
 
 
 def test_crossover_interpolates_50pct() -> None:
-    games = [(1, 0.4), (1, 0.4), (1, 0.7), (-1, 0.7), (-1, 1.0), (-1, 1.0)]
-    # Centre 0,7: franges decisives creuen el 50% cap a 0,7.
-    cx = _crossover(_centered_buckets(games, 0.7))
-    assert cx is not None and 0.6 <= cx <= 0.8
+    games = [(1, 0.4)] * 4 + [(1, 0.7), (-1, 0.7)] * 2 + [(-1, 1.0)] * 4
+    cx = _crossover(_quantile_buckets(games, 3))
+    assert cx is not None and 0.5 <= cx <= 0.9
 
 
 def _setup(tmp_path) -> sqlite3.Connection:
-    """P (nivell 0,6 al rànquing) contra 4 rivals de nivell conegut."""
+    """P contra 4 rivals de nivell conegut (via link): guanya els fluixos."""
     conn = ensure_schema(tmp_path / "t.db")
     conn.row_factory = sqlite3.Row
     tb = conn.execute("SELECT id FROM modalitats WHERE codi_fcb = 1").fetchone()["id"]
@@ -60,7 +55,7 @@ def _setup(tmp_path) -> sqlite3.Connection:
         "INSERT INTO rankings (id, num_seq, modalitat_id, url, format_url) VALUES (1,1,?,?,?)",
         (tb, "u", "data"),
     )
-    for player_id, mitjana in [(1, 0.6), (2, 0.4), (3, 0.6), (4, 0.9), (5, 1.2)]:
+    for player_id, mitjana in [(2, 0.4), (3, 0.6), (4, 0.9), (5, 1.2)]:
         conn.execute(
             "INSERT INTO ranking_entries (ranking_id, player_id, mitjana_general) VALUES (1,?,?)",
             (player_id, mitjana),
@@ -87,13 +82,12 @@ def _setup(tmp_path) -> sqlite3.Connection:
 
 def test_rating_breakdown_end_to_end(tmp_path) -> None:
     prof = rating_breakdown(_setup(tmp_path), 1, [1])[1]
-    assert prof["center"] == 0.6  # nivell de P al rànquing
     assert prof["total"] == 4
-    assert len(prof["buckets"]) == 8  # cua + 6 franges + cua
     assert sum(b["wins"] for b in prof["buckets"]) == 2
     assert sum(b["losses"] for b in prof["buckets"]) == 2
     # Índex ponderat = 100·(0,4+0,6)/(0,4+0,6+0,9+1,2) = 32,3.
     assert prof["weighted_index"] == 32.3
+    assert prof["crossover"] is not None
 
 
 def test_rating_breakdown_non_tres_bandes_is_empty(tmp_path) -> None:

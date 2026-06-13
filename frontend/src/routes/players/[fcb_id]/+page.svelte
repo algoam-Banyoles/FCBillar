@@ -399,6 +399,38 @@
 		/>
 	</div>
 
+	<!-- ── Millor partida (per mitjana) ───────────────────────────────────── -->
+	{#if summary.millor_mitjana != null && summary.millor_mitjana_games?.length}
+		<div class="mb-6">
+			<Collapsible
+				title={summary.millor_mitjana_count > 1
+					? `Millor partida — ${summary.millor_mitjana_count} amb mitjana ${fmtMitjana(summary.millor_mitjana)}`
+					: `Millor partida — mitjana ${fmtMitjana(summary.millor_mitjana)}`}
+				open={true}
+			>
+				<div class="divide-y divide-slate-100">
+					{#each summary.millor_mitjana_games as g}
+						<div class="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
+							<span
+								class="px-1.5 py-0.5 rounded text-xs font-semibold {g.result === 'W'
+									? 'bg-emerald-100 text-emerald-700'
+									: g.result === 'L'
+										? 'bg-red-100 text-red-600'
+										: 'bg-slate-100 text-slate-500'}"
+								>{g.result === 'W' ? 'Victòria' : g.result === 'L' ? 'Derrota' : 'Empat'}</span
+							>
+							<span>vs <strong>{g.opponent}</strong></span>
+							<span class="font-mono text-slate-600">{g.caramboles}–{g.caramboles_rival} · {g.entrades} ent.</span>
+							<span class="font-mono font-bold">{fmtMitjana(g.mitjana)}</span>
+							{#if g.competicio}<span class="text-slate-500">{g.competicio}</span>{/if}
+							<span class="ml-auto text-slate-400">{fmtDate(g.data)}</span>
+						</div>
+					{/each}
+				</div>
+			</Collapsible>
+		</div>
+	{/if}
+
 	<!-- ── Rendiment per nivell d'oponent (aranya, Tres bandes) ───────────── -->
 	{#if selectedMod === TRES_BANDES}
 		<div class="mb-6">
@@ -441,9 +473,9 @@
 							</div>
 						{/if}
 						<p class="text-xs text-slate-500 mt-3 text-center">
-							Franges centrades en el teu nivell (±0,3 de 0,1 en 0,1, extrems agrupats), segons la
-							mitjana de rànquing del rival al moment de la partida (Tres bandes). L'índex pondera
-							les victòries pel nivell del rival.
+							8 franges amb el mateix nombre de partides cada una (els rangs s'estrenyen on tens
+							més rivals), per mitjana de rànquing del rival al moment de la partida (Tres bandes).
+							L'índex pondera les victòries pel nivell del rival.
 						</p>
 					</div>
 				</Card>

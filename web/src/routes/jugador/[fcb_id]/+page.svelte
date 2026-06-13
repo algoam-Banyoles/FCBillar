@@ -364,6 +364,14 @@
 		};
 	}
 	const kpi = $derived(computeKpi(modGames));
+	// Partida(es) amb la millor mitjana (contra qui, resultat, mitjana, competició).
+	const bestGames = $derived.by(() => {
+		if (kpi.best == null) return [] as ReturnType<typeof persp>[];
+		return modGames
+			.map(persp)
+			.filter((p) => p.ent > 0 && Math.abs(p.myCar / p.ent - (kpi.best as number)) < 1e-9)
+			.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
+	});
 	// Temporada actual: comença l'1 d'agost.
 	const seasonStart = (() => {
 		const d = new Date();
@@ -972,6 +980,38 @@
 			</div>
 		{/if}
 
+		<!-- Millor partida (per mitjana) -->
+		{#if kpi.best != null && bestGames.length}
+			<div class="mb-4 rounded-xl bg-white p-3 ring-1 ring-slate-200">
+				<div class="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+					Millor partida{bestGames.length > 1 ? ` · ${bestGames.length}` : ''} · mitjana {kpi.best.toFixed(3)}
+				</div>
+				<div class="divide-y divide-slate-100">
+					{#each bestGames as g}
+						<div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 py-1.5 text-sm">
+							<span
+								class="rounded px-1 py-0.5 text-[10px] font-semibold {g.won
+									? 'bg-emerald-100 text-emerald-700'
+									: g.tie
+										? 'bg-slate-100 text-slate-500'
+										: 'bg-red-100 text-red-600'}"
+								>{g.won ? 'V' : g.tie ? 'E' : 'D'}</span
+							>
+							{#if g.oppId}
+								<a href="/jugador/{g.oppId}" class="font-medium active:underline">{g.opp}</a>
+							{:else}<span class="font-medium">{g.opp}</span>{/if}
+							<span class="font-mono text-slate-500">{g.myCar}–{g.oppCar} · {g.ent} ent.</span>
+							<span class="font-mono font-bold">{(g.myCar / g.ent).toFixed(3)}</span>
+							{#if g.comp}<span class="text-[11px] text-slate-400">{g.comp}</span>{/if}
+							<span class="ml-auto text-[11px] text-slate-400"
+								>{g.date ? g.date.split('-').reverse().join('/') : ''}</span
+							>
+						</div>
+					{/each}
+				</div>
+			</div>
+		{/if}
+
 		<!-- Rendiment per nivell d'oponent (aranya, Tres bandes) -->
 		{#if selMod === 1 && ratingBuckets.some((b) => b.wins + b.losses > 0)}
 			<div class="mb-4 rounded-xl bg-white p-3 ring-1 ring-slate-200">
@@ -1010,9 +1050,9 @@
 					</div>
 				{/if}
 				<p class="mt-2 text-center text-[10px] text-slate-400">
-					Franges centrades en el nivell del jugador (±0,3 de 0,1 en 0,1, extrems agrupats), segons
-					la mitjana de rànquing del rival al moment de la partida. L'índex pondera les victòries
-					pel nivell del rival.
+					8 franges amb el mateix nombre de partides cada una (els rangs s'estrenyen on hi ha més
+					rivals), per mitjana de rànquing del rival al moment de la partida. L'índex pondera les
+					victòries pel nivell del rival.
 				</p>
 			</div>
 		{/if}

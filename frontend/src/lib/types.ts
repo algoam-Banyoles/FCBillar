@@ -101,6 +101,18 @@ export interface PlayerSummary {
 	serie_max: number | null;
 	millor_mitjana: number | null;
 	millor_mitjana_count: number;
+	millor_mitjana_games: BestGame[];
+}
+
+export interface BestGame {
+	opponent: string;
+	result: 'W' | 'L' | 'T';
+	mitjana: number;
+	competicio: string | null;
+	data: string | null;
+	caramboles: number;
+	caramboles_rival: number;
+	entrades: number;
 }
 
 export interface OrderEvolutionRow {

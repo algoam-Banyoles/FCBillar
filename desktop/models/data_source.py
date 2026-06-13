@@ -418,22 +418,38 @@ class DataSource:
                 """,
                 [pid, pid, pid, pid, pid, pid, pid, *mod_param],
             ).fetchone()
-            # Millor mitjana en una sola partida (i quants cops s'ha assolit).
+            # Millor mitjana en una sola partida, amb el detall de la(es) partida(es)
+            # que l'assoleixen (contra qui, resultat, mitjana, competició).
             avg_rows = c.execute(
                 f"""
                 SELECT (CASE WHEN g.player1_id = ? THEN g.caramboles1 ELSE g.caramboles2 END) AS car,
-                       g.entrades AS ent
+                       (CASE WHEN g.player1_id = ? THEN g.caramboles2 ELSE g.caramboles1 END) AS car_opp,
+                       g.entrades AS ent, g.data_partida AS data,
+                       (CASE WHEN g.player1_id = ? THEN p2.nom ELSE p1.nom END) AS opponent,
+                       co.nom AS competicio, g.guanyador_id AS gid
                 FROM games g
+                JOIN players p1 ON p1.id = g.player1_id
+                JOIN players p2 ON p2.id = g.player2_id
+                LEFT JOIN competicions co ON co.id = g.competicio_id
                 WHERE (g.player1_id = ? OR g.player2_id = ?) {mod_filter}
                   AND g.entrades > 0
                 """,
-                [pid, pid, pid, *mod_param],
+                [pid, pid, pid, pid, pid, *mod_param],
             ).fetchall()
-            avgs = [r["car"] / r["ent"] for r in avg_rows if r["ent"] and r["car"] is not None]
-            millor_mitjana = max(avgs) if avgs else None
-            millor_mitjana_count = (
-                sum(1 for a in avgs if abs(a - millor_mitjana) < 1e-9) if avgs else 0
-            )
+            rated = [(r["car"] / r["ent"], r) for r in avg_rows if r["ent"] and r["car"] is not None]
+            millor_mitjana = max((a for a, _ in rated), default=None)
+            best_games = []
+            if millor_mitjana is not None:
+                for a, r in rated:
+                    if abs(a - millor_mitjana) < 1e-9:
+                        result = "T" if r["gid"] is None else ("W" if r["gid"] == pid else "L")
+                        best_games.append({
+                            "opponent": r["opponent"], "result": result, "mitjana": a,
+                            "competicio": r["competicio"], "data": r["data"],
+                            "caramboles": r["car"], "caramboles_rival": r["car_opp"],
+                            "entrades": r["ent"],
+                        })
+                best_games.sort(key=lambda g: g["data"] or "", reverse=True)
             return {
                 "fcb_id": fcb_id, "nom": nom,
                 "total": row["total"] or 0,
@@ -445,7 +461,8 @@ class DataSource:
                 "entrades_total": row["entrades_total"] or 0,
                 "serie_max": row["serie_max"],
                 "millor_mitjana": millor_mitjana,
-                "millor_mitjana_count": millor_mitjana_count,
+                "millor_mitjana_count": len(best_games),
+                "millor_mitjana_games": best_games,
             }
 
     def player_ranking_history(
