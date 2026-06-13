@@ -29,7 +29,7 @@
 	const normGroup = (s: string | null) => (s ?? '').replace(/grup\s*/i, '').toUpperCase().trim();
 	// Només marcadors FRESCS: si fa més de 8 min que no es refresquen, la partida
 	// pot haver acabat o estar en pausa → no mostrem un valor potser obsolet.
-	const FRESH_MS = 8 * 60 * 1000;
+	const FRESH_MS = 12 * 60 * 1000;
 	function liveForGroup(label: string): OpenLiveScore[] {
 		const k = normGroup(label);
 		const cutoff = Date.now() - FRESH_MS;
