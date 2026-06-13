@@ -5,34 +5,33 @@ name: Publish live opens
 # real. Només llegeix pàgines públiques de la federació (sense login) i escriu a
 # Supabase amb la service_role.
 #
-# REQUISIT: afegir aquests secrets al repo (Settings → Secrets and variables →
-# Actions → New repository secret):
+# REQUISIT: secrets al repo (Settings → Secrets and variables → Actions):
 #   - SUPABASE_URL
 #   - SUPABASE_SERVICE_ROLE_KEY
 #
-# CADÈNCIA: divendres, dissabte i diumenge, de 9:00 a 22:00 hora local, cada 15
-# min. ATENCIÓ: el cron de GitHub Actions va en UTC i NO aplica horari d'estiu.
-#   - Estiu (CEST = UTC+2, ~final març–final octubre): 9–22 local = 07–20 UTC.
-#   - Hivern (CET = UTC+1): caldria sumar 1 h → '*/15 8-21 * * 5,6,0'.
-# Dies de la setmana: 5=dv, 6=ds, 0=dg.
-# NOTA: els crons de GitHub són best-effort (retards de 5–45 min i salts sota
-# càrrega); */15 dóna més intents perquè algun caigui a temps, però no garanteix
-# puntualitat. Per a fiabilitat real caldria un cron extern → workflow_dispatch.
+# CADÈNCIA — AUTO-RITMAT: GitHub estrangula els crons freqüents als repos públics
+# (un `*/15` acaba executant-se ~cada hora). Per tenir dades fresques de veritat,
+# cada execució que GitHub dispari fa un BUCLE INTERN que publica cada ~2 min
+# durant ~55 min. Així, encara que GitHub només el dispari un cop per hora,
+# el marcador s'actualitza cada pocs minuts mentre dura la finestra.
+#
+# Finestra: dv/ds/dg, 9:00–22:00 hora local (07–20 UTC a l'estiu; a l'hivern
+# CET caldria '*/15 8-21 * * 5,6,0'). Dies: 5=dv, 6=ds, 0=dg.
 
 on:
   schedule:
     - cron: '*/15 7-20 * * 5,6,0'
   workflow_dispatch: {}
 
-# No solapis execucions: si una triga, la següent espera (no s'encavalquen).
+# Un nou tret reinicia el bucle des de zero (sempre dades fresques, sense pila).
 concurrency:
   group: publish-live-opens
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -41,8 +40,17 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Publish live opens to Supabase
+      - name: Publish live opens (bucle auto-ritmat ~2 min durant ~55 min)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: uv run --no-dev fcbillar publish-live-opens
+        run: |
+          END=$(( SECONDS + 3300 ))   # ~55 min de bucle dins d'aquesta execució
+          i=0
+          while [ "$SECONDS" -lt "$END" ]; do
+            i=$(( i + 1 ))
+            echo "::group::publicació #$i (t=${SECONDS}s)"
+            uv run --no-dev fcbillar publish-live-opens || true
+            echo "::endgroup::"
+            [ "$SECONDS" -lt "$END" ] && sleep 120
+          done
