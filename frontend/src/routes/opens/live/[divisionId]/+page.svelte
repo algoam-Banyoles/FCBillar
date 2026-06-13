@@ -30,6 +30,24 @@
 	// name -> FCBillar fcb_id, so live player names link to their profile.
 	let fcbMap = $state<Record<string, string | null>>({});
 
+	// Discipline (modality) of the open, derived from its name. The ranking-band
+	// panel buckets players by the FCB *Tres Bandes* monthly ranking, so it only
+	// makes sense for Tres Bandes opens — for Quadre / Banda / Lliure it would be
+	// misleading. We surface the modality as a badge and gate the panel on it.
+	function detectModality(name: string): string {
+		const n = name.toUpperCase();
+		if (n.includes('TRES BANDES') || n.includes('3 BANDES')) return 'Tres Bandes';
+		if (n.includes('QUADRE 47/2')) return 'Quadre 47/2';
+		if (n.includes('QUADRE 71/2')) return 'Quadre 71/2';
+		if (n.includes('BANDA')) return 'Banda';
+		if (n.includes('LLIURE')) return 'Lliure';
+		return '';
+	}
+	let modality = $derived(liveData ? detectModality(liveData.name) : '');
+	// Conservative: only show the TB ranking-band panel when we're sure it's
+	// Tres Bandes. Unknown/other disciplines hide it.
+	let isTresBandes = $derived(modality === 'Tres Bandes');
+
 	function playerHref(name: string): string {
 		const id = fcbMap[name];
 		return id ? `/players/${encodeURIComponent(id)}` : `/players?q=${encodeURIComponent(name)}`;
@@ -236,7 +254,17 @@
 {:else if liveData}
 	<div class="mb-4 flex items-start justify-between gap-4">
 		<div>
-			<h1 class="text-2xl font-semibold">{liveData.name}</h1>
+			<div class="flex flex-wrap items-center gap-2">
+				<h1 class="text-2xl font-semibold">{liveData.name}</h1>
+				{#if modality}
+					<span
+						class="shrink-0 rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold uppercase tracking-wider text-slate-600"
+						title="Modalitat"
+					>
+						{modality}
+					</span>
+				{/if}
+			</div>
 			<p class="mt-1 text-sm text-slate-500">
 				FCB #{liveData.division_id} · actualitzat {new Date(liveData.fetched_at).toLocaleTimeString('ca-ES')}
 			</p>
@@ -334,7 +362,8 @@
 		</div>
 	{/if}
 
-	<!-- Parallel classifications by FCB ranking band -->
+	<!-- Parallel classifications by FCB ranking band (Tres Bandes only) -->
+	{#if isTresBandes}
 	<div class="card mb-4">
 		<button
 			class="flex w-full items-center gap-2 text-left"
@@ -418,6 +447,8 @@
 			{/if}
 		{/if}
 	</div>
+
+	{/if}
 
 	<!-- Phase progress bar -->
 	<div class="card mb-4">

@@ -744,6 +744,30 @@ def publish_cloud_cmd() -> None:
     console.print(f"[green]OK publicat a Supabase (fcbillar): {total}[/]")
 
 
+@app.command("publish-live-opens")
+def publish_live_opens_cmd() -> None:
+    """Bolca l'estat EN VIU dels Opens en curs a Supabase (taula `open_live`).
+
+    Raspa la federació en directe (pàgines públiques, sense login) i puja l'estat
+    de cada Open en curs perquè l'app web en mostri el seguiment en temps real.
+    Totes les modalitats; s'exclouen els femenins i els ja tancats. Idempotent —
+    pensat per executar-se sovint des d'un job programat (p.ex. GitHub Action).
+    Cal SUPABASE_URL i SUPABASE_SERVICE_ROLE_KEY (al .env o a l'entorn).
+    """
+    from fcbillar.cloud_sync import publish_live_opens
+
+    def _prog(level: str, msg: str) -> None:
+        console.print(f"[dim]  {msg}[/]" if level == "ok" else f"[yellow]{msg}[/]")
+
+    try:
+        counts = publish_live_opens(on_progress=_prog)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Error publicant els opens en directe: {exc}[/]")
+        raise typer.Exit(code=1) from exc
+    total = ", ".join(f"{k}={v}" for k, v in counts.items())
+    console.print(f"[green]OK opens en directe publicats: {total}[/]")
+
+
 @app.command("ingest-copa")
 def ingest_copa_cmd(
     edicio: int = typer.Argument(..., help="ID d'edició de la Copa (ex: 7)"),

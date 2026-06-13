@@ -122,6 +122,88 @@ export function torneigTipus(nom: string): 'open' | 'campionat' {
 	return 'campionat';
 }
 export const tipusOf = (o: Open): 'open' | 'campionat' => o.tipus ?? torneigTipus(o.nom);
+// ---------------------------------------------------------------------------
+// Opens EN DIRECTE (taula fcbillar.open_live, una fila per Open en curs).
+// `payload_json` és l'estat complet raspat de la federació (mateixa forma que
+// LiveOpenResponse del backend). El publisher és `fcbillar publish-live-opens`.
+// ---------------------------------------------------------------------------
+export interface OpenLiveStanding {
+	player_name: string;
+	club: string;
+	punts: number;
+	mitjana: number;
+}
+export interface OpenLiveMatch {
+	player_a: string;
+	player_b: string;
+	punts_a: number;
+	punts_b: number;
+	caramboles_a: number;
+	caramboles_b: number;
+	serie_major_a: number;
+	serie_major_b: number;
+	entrades: number | null;
+	arbitre: string | null;
+	observations?: string | null;
+	is_played: boolean;
+}
+export interface OpenLiveGroup {
+	label: string;
+	url: string;
+	venue: string | null;
+	standings: OpenLiveStanding[];
+	matches: OpenLiveMatch[];
+	n_matches_played: number;
+	n_matches_total: number;
+}
+export interface OpenLiveProvQual {
+	group_label: string;
+	position_in_group: number;
+	player_name: string;
+	club: string;
+	punts: number;
+	mitjana: number;
+	serie_major: number;
+}
+export interface OpenLivePhase {
+	label: string;
+	kind: 'group' | 'ko';
+	url: string;
+	groups: OpenLiveGroup[];
+	ko_matches: OpenLiveMatch[];
+	is_active: boolean;
+	provisional_qualifiers: OpenLiveProvQual[];
+	provisional_matches: OpenLiveMatch[];
+	provisional_players: { name: string; club: string; mitjana: number; serie_major: number; source: string }[];
+}
+export interface OpenLiveClassRow {
+	position: number;
+	player_name: string;
+	club: string;
+	round_label: string;
+	mitjana: number;
+	serie_major: number;
+	open_points: number;
+	is_provisional_position: boolean;
+}
+export interface OpenLivePayload {
+	division_id: number;
+	name: string;
+	phase_id: number | null;
+	phases: OpenLivePhase[];
+	classification: OpenLiveClassRow[];
+	classification_is_provisional: boolean;
+	fetched_at: string;
+}
+export interface OpenLiveRow {
+	fcb_division_id: number;
+	name: string;
+	modality: string | null;
+	payload_json: OpenLivePayload;
+	captured_at: string;
+	updated_at: string;
+}
+
 export interface OpenClassification {
 	open_id: number;
 	posicio: number | null;

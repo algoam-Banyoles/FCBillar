@@ -1391,3 +1391,122 @@ def publish_player_clubs(
 
     n = _upsert(sb, "player_clubs", rows, "player_fcb_id,temporada", prog)
     return {"player_clubs": n}
+
+
+# --------------------------------------------------------------------------- #
+# Opens EN DIRECTE (seguiment en temps real)
+# --------------------------------------------------------------------------- #
+#
+# A diferència de la resta de publishers (que llegeixen la SQLite local), aquest
+# raspa la federació EN VIU i en bolca l'estat a `fcbillar.open_live` (una fila
+# per divisió en curs). Pensat per executar-se sovint (cada pocs minuts) des
+# d'un job programat — només pàgines públiques, sense login. Quan un Open
+# s'acaba (la FCB publica classificació final) se'n treu la fila d'aquí: ja
+# apareixerà a `opens`/`open_classifications` un cop ingerit com a acabat.
+
+
+def _open_modality(name: str) -> str:
+    """Modalitat (disciplina) derivada del nom de l'Open. Mirall de la detecció
+    del frontend perquè el web etiqueti i tracti cada modalitat correctament."""
+    n = name.upper()
+    if "TRES BANDES" in n or "3 BANDES" in n:
+        return "Tres Bandes"
+    if "QUADRE 47/2" in n:
+        return "Quadre 47/2"
+    if "QUADRE 71/2" in n:
+        return "Quadre 71/2"
+    if "BANDA" in n:
+        return "Banda"
+    if "LLIURE" in n:
+        return "Lliure"
+    return ""
+
+
+def publish_live_opens(
+    on_progress: Progress | None = None, *, force: bool = True
+) -> dict[str, int]:
+    """Bolca l'estat en viu de TOTS els Opens en curs a `fcbillar.open_live`.
+
+    Inclou totes les modalitats (Tres Bandes, Quadre, Banda, Lliure); només
+    s'exclouen els Opens femenins (format diferent) i els ja tancats. Idempotent:
+    upsert per `fcb_division_id` i esborrat de les files d'Opens que ja no
+    estiguin en curs. Retorna comptadors {live_opens, removed, errors}.
+    """
+    from datetime import datetime, timezone
+
+    from fcb_opens.scraper.open_live import (
+        fetch_has_final_classification,
+        fetch_individuals_llistat,
+        fetch_live_state,
+    )
+    from fcb_opens.snapshot_live import _state_payload
+
+    prog: Progress = on_progress or (lambda level, msg: None)
+    sb = get_client()
+    fetched_at = datetime.now(timezone.utc).isoformat()
+
+    try:
+        entries = fetch_individuals_llistat(force=force)
+    except Exception as exc:  # noqa: BLE001
+        prog("warn", f"no s'ha pogut llegir el llistat d'individuals: {exc}")
+        return {"live_opens": 0, "removed": 0, "errors": 1}
+
+    rows: list[dict] = []
+    active_ids: list[int] = []
+    errors = 0
+    for e in entries:
+        name_upper = e.name.upper()
+        if "OPEN" not in name_upper:
+            continue
+        if "FEMENI" in name_upper:
+            # Els Opens femenins tenen un format propi que no seguim en directe.
+            continue
+        # Saltar els ja tancats (classificació final publicada): aquests
+        # pertanyen a l'històric, no al directe.
+        try:
+            if fetch_has_final_classification(e.division_id, force=force):
+                continue
+        except Exception:  # noqa: BLE001 — si la sonda falla, el tractem com a en curs
+            pass
+        try:
+            state = fetch_live_state(e.division_id, force=force)
+        except Exception as exc:  # noqa: BLE001
+            prog("warn", f"#{e.division_id} {e.name}: {exc}")
+            errors += 1
+            continue
+        # Sense fases publicades encara (sorteig no penjat): res a mostrar.
+        if not state.phases:
+            continue
+        payload = _state_payload(state, fetched_at)
+        rows.append({
+            "fcb_division_id": e.division_id,
+            "name": state.structure.name,
+            "modality": _open_modality(state.structure.name),
+            "payload_json": payload,
+            "captured_at": fetched_at,
+            "updated_at": fetched_at,
+        })
+        active_ids.append(e.division_id)
+        prog("ok", f"#{e.division_id} {state.structure.name} ({len(state.phases)} fases)")
+
+    if rows:
+        _upsert(sb, "open_live", rows, "fcb_division_id", prog)
+
+    # Treu els Opens que ja no són en curs (acabats o desapareguts del llistat).
+    # `not in (active_ids)`; si no n'hi ha cap actiu, esborra-ho tot (usem [-1],
+    # un id impossible, perquè el filtre 'not in' no quedi buit).
+    removed = 0
+    try:
+        res = (
+            sb.table("open_live")
+            .delete()
+            .not_.in_("fcb_division_id", active_ids or [-1])
+            .execute()
+        )
+        removed = len(res.data or [])
+        if removed:
+            prog("ok", f"open_live: {removed} files retirades (ja no en curs)")
+    except Exception as exc:  # noqa: BLE001
+        prog("warn", f"no s'han pogut retirar files antigues: {exc}")
+
+    return {"live_opens": len(rows), "removed": removed, "errors": errors}
