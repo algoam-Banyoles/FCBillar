@@ -125,22 +125,31 @@
 				.filter((q) => q.position_in_group === 1)
 				.slice()
 				.sort((a, b) => b.punts - a.punts || b.mitjana - a.mitjana)}
+			{@const phaseComplete = phase.groups.every((g) => g.n_matches_total > 0 && g.n_matches_played === g.n_matches_total)}
 			{#if quals.length}
 				<div class="mb-3 rounded-xl bg-emerald-50 p-3 ring-1 ring-emerald-200">
-					<div class="mb-1.5 text-xs font-semibold uppercase tracking-wide text-emerald-700">
-						Classificats per a la següent ronda · 1rs de grup ({quals.length})
+					<div class="mb-1.5 flex items-center gap-2">
+						<span class="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+							Classificats per a la següent ronda · 1rs de grup ({quals.length})
+						</span>
+						{#if !phaseComplete}
+							<span class="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-700">Provisional</span>
+						{/if}
 					</div>
 					<ol class="space-y-0.5">
 						{#each quals as q, i}
+							{@const grp = phase.groups.find((gg) => gg.label === q.group_label)}
+							{@const sure = !!grp && grp.n_matches_total > 0 && grp.n_matches_played === grp.n_matches_total}
 							<li class="flex items-center gap-2 text-sm">
 								<span class="w-4 shrink-0 text-right font-mono text-[11px] text-slate-400">{i + 1}</span>
 								<span class="shrink-0 rounded bg-white/70 px-1 font-mono text-[10px] text-slate-500">{q.group_label.replace('Grup ', '')}</span>
-								<span class="min-w-0 flex-1 truncate">{q.player_name}</span>
+								<span class="min-w-0 flex-1 truncate {sure ? 'font-medium' : ''}">{q.player_name}</span>
+								{#if sure}<span class="shrink-0 text-emerald-600" title="Classificació assegurada (grup acabat)">✓</span>{/if}
 								<span class="shrink-0 font-mono text-[11px] text-slate-500">{q.punts} pt · {q.mitjana.toFixed(3)}</span>
 							</li>
 						{/each}
 					</ol>
-					<p class="mt-1.5 text-[10px] text-slate-400">Només grups amb partides jugades. Ordre: punts → mitjana.</p>
+					<p class="mt-1.5 text-[10px] text-slate-400">Només grups amb partides jugades. Ordre: punts → mitjana. ✓ = classificació assegurada (grup acabat).</p>
 				</div>
 			{/if}
 			<div class="grid gap-2.5 sm:grid-cols-2">
@@ -175,15 +184,15 @@
 								</div>
 								<ul class="space-y-1.5">
 									{#each played as m}
+										{@const aWin = m.caramboles_a > m.caramboles_b}
+										{@const bWin = m.caramboles_b > m.caramboles_a}
 										<li>
 											<div class="flex items-center justify-between gap-2 text-xs">
-												<span class="min-w-0 flex-1 truncate {m.punts_a > m.punts_b ? 'font-semibold' : ''}">{m.player_a}</span>
-												<span class="shrink-0 font-mono">{m.punts_a}–{m.punts_b}</span>
-												<span class="min-w-0 flex-1 truncate text-right {m.punts_b > m.punts_a ? 'font-semibold' : ''}">{m.player_b}</span>
+												<span class="min-w-0 flex-1 truncate font-bold {aWin ? 'text-emerald-600' : bWin ? 'text-red-600' : 'text-slate-900'}">{m.player_a}</span>
+												<span class="shrink-0 font-mono font-bold text-slate-700">{m.caramboles_a}–{m.caramboles_b}</span>
+												<span class="min-w-0 flex-1 truncate text-right font-bold {bWin ? 'text-emerald-600' : aWin ? 'text-red-600' : 'text-slate-900'}">{m.player_b}</span>
 											</div>
-											<div class="text-center text-[10px] text-slate-400">
-												{m.caramboles_a}–{m.caramboles_b} car.{m.entrades ? ` · ${m.entrades} ent.` : ''}
-											</div>
+											{#if m.entrades}<div class="text-center text-[10px] text-slate-400">{m.entrades} ent.</div>{/if}
 										</li>
 									{/each}
 								</ul>

@@ -1,8 +1,19 @@
 <script lang="ts">
 	import '../app.css';
+	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import { afterNavigate } from '$app/navigation';
+	import { supabase } from '$lib/supabase';
 	let { children } = $props();
+
+	// Punt vermell llampegant al costat d'"Opens" si hi ha algun Open en curs.
+	let liveCount = $state(0);
+	onMount(async () => {
+		const { count } = await supabase
+			.from('open_live')
+			.select('fcb_division_id', { count: 'exact', head: true });
+		liveCount = count ?? 0;
+	});
 
 	// En canviar de pàgina, torna a dalt (i reseteja l'scroll/zoom de desplaçament).
 	afterNavigate(() => {
@@ -43,7 +54,13 @@
 					href={t.href}
 					class="-mb-px rounded-t-lg px-3 py-2 text-sm font-medium md:px-4 md:text-base {t.match(path)
 						? 'border-b-2 border-slate-900 text-slate-900'
-						: 'text-slate-400'}">{t.label}</a>
+						: 'text-slate-400'}"
+					>{t.label}{#if t.href === '/opens' && liveCount > 0}<span
+							class="relative ml-1 inline-flex h-2 w-2 align-middle"
+							title="Opens en directe ara"
+							><span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75"
+							></span><span class="relative inline-flex h-2 w-2 rounded-full bg-red-500"></span></span>{/if}</a
+					>
 			{/each}
 		</nav>
 	</header>
