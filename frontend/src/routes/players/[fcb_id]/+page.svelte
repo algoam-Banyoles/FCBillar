@@ -452,32 +452,41 @@
 						</div>
 						<RadarChart buckets={ratingBuckets} mode={radarMode} />
 						{#if ratingIndex != null || ratingCrossover != null}
-							<div class="flex flex-wrap justify-center gap-x-8 gap-y-2 mt-3">
+							<div class="grid sm:grid-cols-2 gap-4 mt-4">
 								{#if ratingIndex != null}
-									<div class="text-center">
-										<div class="text-xl font-bold text-slate-800">{ratingIndex}</div>
-										<div class="text-[11px] uppercase tracking-wide text-slate-400">
-											índex de rendiment
+									<div class="rounded-lg bg-slate-50 p-3">
+										<div class="flex items-baseline gap-2">
+											<span class="text-2xl font-bold text-slate-800">{ratingIndex}</span>
+											<span class="text-xs font-semibold uppercase tracking-wide text-slate-500"
+												>Índex de rendiment</span
+											>
 										</div>
+										<p class="text-xs text-slate-500 mt-1">
+											Com el % de victòries, però cada partida pesa segons el nivell del rival:
+											guanyar als forts compta més que guanyar als fluixos. Va de 0 a 100; ~50 és
+											un balanç equilibrat.
+										</p>
 									</div>
 								{/if}
 								{#if ratingCrossover != null}
-									<div class="text-center">
-										<div class="text-xl font-bold text-slate-800">
-											{ratingCrossover.toFixed(2).replace('.', ',')}
+									<div class="rounded-lg bg-slate-50 p-3">
+										<div class="flex items-baseline gap-2">
+											<span class="text-2xl font-bold text-slate-800"
+												>{ratingCrossover.toFixed(2).replace('.', ',')}</span
+											>
+											<span class="text-xs font-semibold uppercase tracking-wide text-slate-500"
+												>Nivell de competitivitat</span
+											>
 										</div>
-										<div class="text-[11px] uppercase tracking-wide text-slate-400">
-											competitiu fins a ~
-										</div>
+										<p class="text-xs text-slate-500 mt-1">
+											Mitjana de rival a partir de la qual comences a perdre més partides de les
+											que guanyes (on la taxa de victòries creua el 50%). Ets competitiu fins
+											aquest nivell.
+										</p>
 									</div>
 								{/if}
 							</div>
 						{/if}
-						<p class="text-xs text-slate-500 mt-3 text-center">
-							8 franges amb el mateix nombre de partides cada una (els rangs s'estrenyen on tens
-							més rivals), per mitjana de rànquing del rival al moment de la partida, en la
-							modalitat seleccionada. L'índex pondera les victòries pel nivell del rival.
-						</p>
 					</div>
 				</Card>
 			</Collapsible>

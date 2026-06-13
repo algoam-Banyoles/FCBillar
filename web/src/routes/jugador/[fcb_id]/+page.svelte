@@ -1033,28 +1033,35 @@
 				</div>
 				<RadarChart buckets={ratingBuckets} mode={radarMode} />
 				{#if ratingIndex != null || ratingCrossover != null}
-					<div class="mt-2 flex justify-center gap-8">
+					<div class="mt-3 grid grid-cols-1 gap-2">
 						{#if ratingIndex != null}
-							<div class="text-center">
-								<div class="font-mono text-base font-bold tabular-nums">{ratingIndex}</div>
-								<div class="text-[10px] uppercase tracking-wide text-slate-400">índex rendiment</div>
+							<div class="rounded-lg bg-slate-50 p-2">
+								<div class="flex items-baseline gap-2">
+									<span class="font-mono text-lg font-bold tabular-nums">{ratingIndex}</span>
+									<span class="text-[11px] font-semibold text-slate-600">Índex de rendiment</span>
+								</div>
+								<p class="text-[11px] leading-snug text-slate-500">
+									Com el % de victòries, però cada partida pesa segons el nivell del rival:
+									guanyar als forts compta més. De 0 a 100 (~50 = equilibrat).
+								</p>
 							</div>
 						{/if}
 						{#if ratingCrossover != null}
-							<div class="text-center">
-								<div class="font-mono text-base font-bold tabular-nums">
-									{ratingCrossover.toFixed(2).replace('.', ',')}
+							<div class="rounded-lg bg-slate-50 p-2">
+								<div class="flex items-baseline gap-2">
+									<span class="font-mono text-lg font-bold tabular-nums"
+										>{ratingCrossover.toFixed(2).replace('.', ',')}</span
+									>
+									<span class="text-[11px] font-semibold text-slate-600">Nivell de competitivitat</span>
 								</div>
-								<div class="text-[10px] uppercase tracking-wide text-slate-400">competitiu fins a ~</div>
+								<p class="text-[11px] leading-snug text-slate-500">
+									Mitjana de rival on comences a perdre més partides de les que guanyes (la taxa
+									de victòries creua el 50%). Ets competitiu fins aquest nivell.
+								</p>
 							</div>
 						{/if}
 					</div>
 				{/if}
-				<p class="mt-2 text-center text-[10px] text-slate-400">
-					8 franges amb el mateix nombre de partides cada una (els rangs s'estrenyen on hi ha més
-					rivals), per mitjana de rànquing del rival al moment de la partida. L'índex pondera les
-					victòries pel nivell del rival.
-				</p>
 			</div>
 		{/if}
 
