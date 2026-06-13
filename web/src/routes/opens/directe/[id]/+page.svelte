@@ -7,7 +7,6 @@
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let selectedPhase = $state<number | null>(null);
-	let showClass = $state(false);
 	let timer: ReturnType<typeof setInterval> | null = null;
 
 	const divisionId = $derived(Number($page.params.id));
@@ -122,9 +121,32 @@
 	{#if selectedPhase !== null && phases[selectedPhase]}
 		{@const phase = phases[selectedPhase]}
 		{#if phase.kind === 'group'}
+			{@const quals = phase.provisional_qualifiers
+				.filter((q) => q.position_in_group === 1)
+				.slice()
+				.sort((a, b) => b.punts - a.punts || b.mitjana - a.mitjana)}
+			{#if quals.length}
+				<div class="mb-3 rounded-xl bg-emerald-50 p-3 ring-1 ring-emerald-200">
+					<div class="mb-1.5 text-xs font-semibold uppercase tracking-wide text-emerald-700">
+						Classificats per a la següent ronda · 1rs de grup ({quals.length})
+					</div>
+					<ol class="space-y-0.5">
+						{#each quals as q, i}
+							<li class="flex items-center gap-2 text-sm">
+								<span class="w-4 shrink-0 text-right font-mono text-[11px] text-slate-400">{i + 1}</span>
+								<span class="shrink-0 rounded bg-white/70 px-1 font-mono text-[10px] text-slate-500">{q.group_label.replace('Grup ', '')}</span>
+								<span class="min-w-0 flex-1 truncate">{q.player_name}</span>
+								<span class="shrink-0 font-mono text-[11px] text-slate-500">{q.punts} pt · {q.mitjana.toFixed(3)}</span>
+							</li>
+						{/each}
+					</ol>
+					<p class="mt-1.5 text-[10px] text-slate-400">Només grups amb partides jugades. Ordre: punts → mitjana.</p>
+				</div>
+			{/if}
 			<div class="grid gap-2.5 sm:grid-cols-2">
 				{#each phase.groups as g (g.label)}
 					{@const done = g.n_matches_total > 0 && g.n_matches_played === g.n_matches_total}
+					{@const played = g.matches.filter((m) => m.is_played)}
 					<div class="overflow-hidden rounded-xl bg-white ring-1 {done ? 'ring-emerald-200' : 'ring-slate-200'}">
 						<div class="flex items-center justify-between gap-2 px-3 py-1.5 {done ? 'bg-emerald-50' : 'bg-slate-50'}">
 							<span class="text-sm font-semibold">{g.label}</span>
@@ -145,6 +167,27 @@
 							</ol>
 						{:else}
 							<p class="px-3 py-2 text-xs text-slate-400">Sense classificació encara.</p>
+						{/if}
+						{#if played.length}
+							<div class="border-t border-slate-100 px-3 py-2">
+								<div class="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+									Partides disputades
+								</div>
+								<ul class="space-y-1.5">
+									{#each played as m}
+										<li>
+											<div class="flex items-center justify-between gap-2 text-xs">
+												<span class="min-w-0 flex-1 truncate {m.punts_a > m.punts_b ? 'font-semibold' : ''}">{m.player_a}</span>
+												<span class="shrink-0 font-mono">{m.punts_a}–{m.punts_b}</span>
+												<span class="min-w-0 flex-1 truncate text-right {m.punts_b > m.punts_a ? 'font-semibold' : ''}">{m.player_b}</span>
+											</div>
+											<div class="text-center text-[10px] text-slate-400">
+												{m.caramboles_a}–{m.caramboles_b} car.{m.entrades ? ` · ${m.entrades} ent.` : ''}
+											</div>
+										</li>
+									{/each}
+								</ul>
+							</div>
 						{/if}
 					</div>
 				{/each}
@@ -174,36 +217,6 @@
 					{/each}
 				</ul>
 			{/if}
-		{/if}
-	{/if}
-
-	<!-- Classificació provisional de l'Open (eliminats + projecció) -->
-	{#if payload.classification.length}
-		<button
-			onclick={() => (showClass = !showClass)}
-			class="mt-4 flex w-full items-center justify-between rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white"
-		>
-			<span>Classificació {payload.classification_is_provisional ? 'provisional' : 'final'} ({payload.classification.length})</span>
-			<span class="text-xs text-slate-300">{showClass ? '▴' : '▾'}</span>
-		</button>
-		{#if showClass}
-			<div class="mt-2 overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
-				<ul>
-					{#each payload.classification as c}
-						<li class="flex items-center gap-2 border-b border-slate-100 px-3 py-1.5 last:border-0">
-							<span class="w-6 text-center text-sm font-semibold tabular-nums {c.position === 1 ? 'text-amber-500' : 'text-slate-400'}">{c.position}</span>
-							<div class="min-w-0 flex-1">
-								<div class="truncate text-sm leading-tight {c.is_provisional_position ? 'italic' : ''}">{c.player_name}</div>
-								{#if c.club}<div class="truncate text-[10px] text-slate-400">{c.club} · {c.round_label}</div>{/if}
-							</div>
-							<span class="shrink-0 font-mono text-sm font-bold tabular-nums">{c.open_points}</span>
-						</li>
-					{/each}
-				</ul>
-			</div>
-			<p class="px-1 py-2 text-center text-[10px] text-slate-400">
-				Punts segons posició (Art. XVII). Classificació calculada en directe; pot canviar fins que la FCB la publiqui.
-			</p>
 		{/if}
 	{/if}
 {/if}
