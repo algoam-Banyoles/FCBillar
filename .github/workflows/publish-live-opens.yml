@@ -1,0 +1,44 @@
+name: Publish live opens
+
+# Bolca l'estat EN VIU dels Opens en curs (totes les modalitats) a Supabase
+# (taula fcbillar.open_live), perquè l'app web en mostri el seguiment en temps
+# real. Només llegeix pàgines públiques de la federació (sense login) i escriu a
+# Supabase amb la service_role.
+#
+# REQUISIT: afegir aquests secrets al repo (Settings → Secrets and variables →
+# Actions → New repository secret):
+#   - SUPABASE_URL
+#   - SUPABASE_SERVICE_ROLE_KEY
+#
+# CADÈNCIA: cada 15 min dins una finestra diürna (UTC). Catalunya va a UTC+2 a
+# l'estiu, així que 06–22 UTC ≈ 08–24 local. Ajusta el cron (o afegeix-hi un
+# filtre de dia de la setmana, p.ex. ',0,6' per a només caps de setmana) segons
+# quan es disputin els opens, per no gastar minuts d'Actions de franc.
+
+on:
+  schedule:
+    - cron: '*/15 6-22 * * *'
+  workflow_dispatch: {}
+
+# No solapis execucions: si una triga, la següent espera (no s'encavalquen).
+concurrency:
+  group: publish-live-opens
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Publish live opens to Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: uv run --no-dev fcbillar publish-live-opens
