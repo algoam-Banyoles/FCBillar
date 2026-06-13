@@ -1,7 +1,7 @@
 <script lang="ts">
 	// Radar (aranya) de rendiment: un eix per franja de nivell d'oponent.
-	// mode='abs' → dos polígons (victòries / derrotes). mode='pct' → un polígon
-	// (% de victòries per franja). SVG pur, sense dependències.
+	// mode='abs' → dos polígons (victòries / derrotes). mode='pct' → dos polígons
+	// (% de victòries i % de derrotes per franja). SVG pur, sense dependències.
 	let {
 		buckets = [],
 		size = 360,
@@ -22,6 +22,7 @@
 
 	const dec = (b: { wins: number; losses: number }) => b.wins + b.losses;
 	const winPct = (b: { wins: number; losses: number }) => (dec(b) > 0 ? (b.wins / dec(b)) * 100 : 0);
+	const lossPct = (b: { wins: number; losses: number }) => (dec(b) > 0 ? (b.losses / dec(b)) * 100 : 0);
 
 	function niceCeil(v: number): number {
 		if (v <= 5) return 5;
@@ -64,9 +65,11 @@
 		}))
 	);
 	const pctVals = $derived(buckets.map(winPct));
+	const lossPctVals = $derived(buckets.map(lossPct));
 	const winPoly = $derived(poly(buckets.map((b) => b.wins)));
 	const lossPoly = $derived(poly(buckets.map((b) => b.losses)));
 	const pctPoly = $derived(poly(pctVals));
+	const lossPctPoly = $derived(poly(lossPctVals));
 	const hasData = $derived(buckets.some((b) => b.wins + b.losses > 0));
 </script>
 
@@ -84,10 +87,13 @@
 			{/each}
 
 			{#if mode === 'pct'}
-				<polygon points={pctPoly} fill={WIN} fill-opacity="0.2" stroke={WIN} stroke-width="2" />
+				<polygon points={lossPctPoly} fill={LOSS} fill-opacity="0.18" stroke={LOSS} stroke-width="2" />
+				<polygon points={pctPoly} fill={WIN} fill-opacity="0.22" stroke={WIN} stroke-width="2" />
 				{#each buckets as _b, i}
-					{@const [x, y] = pt(i, (pctVals[i] / scaleMax) * R)}
-					<circle cx={x} cy={y} r="3" fill={WIN} />
+					{@const [wx, wy] = pt(i, (pctVals[i] / scaleMax) * R)}
+					{@const [lx, ly] = pt(i, (lossPctVals[i] / scaleMax) * R)}
+					<circle cx={lx} cy={ly} r="3" fill={LOSS} />
+					<circle cx={wx} cy={wy} r="3" fill={WIN} />
 				{/each}
 			{:else}
 				<polygon points={lossPoly} fill={LOSS} fill-opacity="0.18" stroke={LOSS} stroke-width="2" />
@@ -114,8 +120,11 @@
 				</text>
 				{#if mode === 'pct'}
 					<text x={lxr} y={lyr + 13} text-anchor={anchor(i)} dominant-baseline="middle" style="font-size: 10px">
-						<tspan fill={dec(b) ? WIN : '#94a3b8'}>{dec(b) ? Math.round(winPct(b)) + '%' : '—'}</tspan>
-						<tspan fill="#94a3b8"> ({dec(b)})</tspan>
+						{#if dec(b)}
+							<tspan fill={WIN}>{Math.round(winPct(b))}%</tspan>
+							<tspan fill="#94a3b8"> · </tspan>
+							<tspan fill={LOSS}>{Math.round(lossPct(b))}%</tspan>
+						{:else}<tspan fill="#94a3b8">—</tspan>{/if}
 					</text>
 				{:else}
 					<text x={lxr} y={lyr + 13} text-anchor={anchor(i)} dominant-baseline="middle" style="font-size: 10px">
@@ -131,7 +140,10 @@
 				<span class="flex items-center gap-1">
 					<span class="inline-block h-3 w-3 rounded-sm" style="background:{WIN}"></span> % victòries
 				</span>
-				<span class="text-slate-400">escala 0–100% · (n)</span>
+				<span class="flex items-center gap-1">
+					<span class="inline-block h-3 w-3 rounded-sm" style="background:{LOSS}"></span> % derrotes
+				</span>
+				<span class="text-slate-400">escala 0–100%</span>
 			{:else}
 				<span class="flex items-center gap-1">
 					<span class="inline-block h-3 w-3 rounded-sm" style="background:{WIN}"></span> Victòries
