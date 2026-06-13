@@ -749,18 +749,40 @@ def _expected_ko_slots(ref: PhaseRef, played_count: int) -> int:
     return n_matches * 2 if n_matches else 0
 
 
-def _qualifiers_per_group(current: PhaseDetail, next_slots: int) -> int:
-    """Given the current group phase has N groups and the next phase needs K
-    slots, how many players advance per group?"""
-    if not current.groups:
-        return 0
-    # Ignore RESERVES and ad-hoc groups (lowercase or non-letter labels) for
-    # slot-count purposes. They don't typically feed the next phase.
-    regular = [g for g in current.groups if _is_regular_group(g.label)]
-    n = len(regular) or len(current.groups)
-    if next_slots <= 0 or n == 0:
-        return 1
-    return max(1, next_slots // n)
+def _norm_name(name: str) -> str:
+    """Collapse whitespace + upper-case, to match a player across phases
+    regardless of incidental spacing/case differences in the source HTML."""
+    return " ".join(name.split()).upper()
+
+
+def _phase_player_names(phase: PhaseDetail) -> frozenset[str]:
+    """Normalised set of every player named in a phase — group standings or
+    KO pairings. Used to detect who advanced INTO the phase."""
+    names: set[str] = set()
+    for g in phase.groups:
+        for s in g.standings:
+            if s.player_name:
+                names.add(_norm_name(s.player_name))
+    for m in phase.ko_matches:
+        for nm in (m.player_a, m.player_b):
+            if nm:
+                names.add(_norm_name(nm))
+    for p in phase.provisional_players:
+        if p.name:
+            names.add(_norm_name(p.name))
+    return frozenset(names)
+
+
+def _group_sm_by_player(group: Group) -> dict[str, int]:
+    """Max sèrie-major per player across a group's matches. The standings
+    table doesn't carry SM, so we derive it from the match results."""
+    sm: dict[str, int] = {}
+    for m in group.matches:
+        if m.player_a:
+            sm[m.player_a] = max(sm.get(m.player_a, 0), m.serie_major_a)
+        if m.player_b:
+            sm[m.player_b] = max(sm.get(m.player_b, 0), m.serie_major_b)
+    return sm
 
 
 def _is_regular_group(label: str) -> bool:
@@ -773,15 +795,29 @@ def _is_regular_group(label: str) -> bool:
 
 def compute_provisional_qualifiers(
     current: PhaseDetail,
-    next_slots: int,
+    next_phase_names: frozenset[str] | None = None,
 ) -> tuple[ProvisionalQualifier, ...]:
-    """Compute the provisional qualifiers from each group's standings.
+    """Compute who advances from a group phase.
 
-    Takes the top-N from every group ordered by (punts DESC, mitjana DESC).
-    N is determined from `next_slots / n_regular_groups`.
+    FCB opens rule (per the user): the 1st of EVERY group advances, and then
+    — to fill the next round's groups — the BEST runners-up advance too, as
+    many 2nds as there are free seats ("es classifiquen tots els primers i
+    tants 2ns com calgui per omplir tots els grups").
+
+    We don't guess the seat count: the federation publishes the NEXT round's
+    draw with the actual advancing players, so the players of THIS phase that
+    already appear in the next phase (`next_phase_names`) ARE the qualifiers.
+    We therefore mark:
+      • every group winner (a sure qualifier), plus
+      • anyone the federation has already placed in the next round (the best
+        2nds), tagged with their real standings position.
+    When the next round isn't drawn yet (`next_phase_names` empty) we only
+    surface the sure qualifiers (the group winners).
+
+    Group order is the federation's official standings order (it already
+    applies their tie-breaks and the no-show convention); we never re-sort.
     Returns an empty tuple if the phase has no groups or no standings.
     """
-    n = _qualifiers_per_group(current, next_slots)
     out: list[ProvisionalQualifier] = []
     for group in current.groups:
         # Only regular groups (Grup A..P) feed the next phase. RESERVATS and
@@ -794,25 +830,14 @@ def compute_provisional_qualifiers(
         # qui passa (tothom va 0-0): no marquem cap classificat provisional.
         if not any(m.is_played for m in group.matches):
             continue
-        # Per-Open tiebreak inside a group: punts → promig (mitjana) → sèrie
-        # major. The standings table doesn't carry SM, so we derive max-SM
-        # per player from the group's match results.
-        max_sm_by_player: dict[str, int] = {}
-        for m in group.matches:
-            if m.player_a:
-                max_sm_by_player[m.player_a] = max(
-                    max_sm_by_player.get(m.player_a, 0), m.serie_major_a
-                )
-            if m.player_b:
-                max_sm_by_player[m.player_b] = max(
-                    max_sm_by_player.get(m.player_b, 0), m.serie_major_b
-                )
-        # Confiem en l'ORDRE de la classificació de la federació (ja aplica els
-        # seus desempats oficials i la convenció de no-presentats); el 1r de la
-        # taula és el classificat. Re-ordenar pel nostre compte feia que, en cas
-        # d'empat, marquéssim com a 1r un que la federació té com a 2n.
-        ordered = list(group.standings)
-        for idx, s in enumerate(ordered[:n]):
+        sm = _group_sm_by_player(group)
+        for idx, s in enumerate(group.standings):
+            is_winner = idx == 0
+            advanced = bool(next_phase_names) and (
+                _norm_name(s.player_name) in next_phase_names
+            )
+            if not (is_winner or advanced):
+                continue
             out.append(
                 ProvisionalQualifier(
                     group_label=group.label,
@@ -821,7 +846,7 @@ def compute_provisional_qualifiers(
                     club=s.club,
                     punts=s.punts,
                     mitjana=s.mitjana,
-                    serie_major=max_sm_by_player.get(s.player_name, 0),
+                    serie_major=sm.get(s.player_name, 0),
                 )
             )
     return tuple(out)
@@ -1692,20 +1717,24 @@ def fetch_live_state(division_id: int, *, force: bool = False) -> OpenLiveState:
             details.append(PhaseDetail(ref=ref, ko_matches=matches))
 
     # 4) Second pass: compute provisional qualifiers per group phase.
-    #    Rule (per FCB defaults): the 1st of each regular group always
-    #    advances. 2nd-placed players occasionally fill seats in early phases
-    #    (pre-pre-prèvia, pre-prèvia) but NEVER from the last group phase
-    #    feeding the KO. Since we can't reliably detect the "eventually 2nd"
-    #    case without Open-specific rules, we default to top-1 everywhere.
-    #    The remaining KO slots are filled by seeded players (caps de sèrie)
-    #    whom we can't identify from the scraped data.
+    #    Rule (per the user): the 1st of every regular group advances, plus
+    #    the best runners-up needed to fill the next round's groups. We read
+    #    that seat count straight from the next round's published draw — the
+    #    players of this phase that already appear in the next phase ARE the
+    #    advancers (group winners + best 2nds). When the next round isn't
+    #    drawn yet we only surface the sure qualifiers (the group winners).
     enriched: list[PhaseDetail] = []
-    for d in details:
+    for i, d in enumerate(details):
         if d.ref.kind != "group":
             enriched.append(d)
             continue
-        n_regular = sum(1 for g in d.groups if _is_regular_group(g.label))
-        qualifiers = compute_provisional_qualifiers(d, next_slots=n_regular)
+        # The next round's published draw tells us who advanced from this
+        # phase: all group winners + the best 2nds the federation placed
+        # there to fill the next round's groups.
+        next_names = (
+            _phase_player_names(details[i + 1]) if i + 1 < len(details) else None
+        )
+        qualifiers = compute_provisional_qualifiers(d, next_names)
         enriched.append(
             PhaseDetail(
                 ref=d.ref,

@@ -175,15 +175,15 @@
 		{@const phase = phases[selectedPhase]}
 		{#if phase.kind === 'group'}
 			{@const quals = phase.provisional_qualifiers
-				.filter((q) => q.position_in_group === 1)
 				.slice()
-				.sort((a, b) => b.punts - a.punts || b.mitjana - a.mitjana)}
+				.sort((a, b) => a.position_in_group - b.position_in_group || b.punts - a.punts || b.mitjana - a.mitjana)}
+			{@const nSeconds = quals.filter((q) => q.position_in_group > 1).length}
 			{@const phaseComplete = phase.groups.every((g) => g.n_matches_total > 0 && g.n_matches_played === g.n_matches_total)}
 			{#if quals.length}
 				<div class="mb-3 rounded-xl bg-emerald-50 p-3 ring-1 ring-emerald-200">
 					<div class="mb-1.5 flex items-center gap-2">
 						<span class="text-xs font-semibold uppercase tracking-wide text-emerald-700">
-							Classificats per a la següent ronda · 1rs de grup ({quals.length})
+							Classificats per a la següent ronda ({quals.length}){#if nSeconds} · 1rs + {nSeconds} {nSeconds === 1 ? 'millor 2n' : 'millors 2ns'}{/if}
 						</span>
 						{#if !phaseComplete}
 							<span class="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-700">Provisional</span>
@@ -203,13 +203,13 @@
 					<ol class="space-y-0.5">
 						{#each quals as q, i}
 							{@const grp = phase.groups.find((gg) => gg.label === q.group_label)}
-							{@const sure = !!grp && grp.n_matches_total > 0 && grp.n_matches_played === grp.n_matches_total}
-							<li class="flex items-center gap-2 text-sm">
+							{@const sure = q.position_in_group > 1 || (!!grp && grp.n_matches_total > 0 && grp.n_matches_played === grp.n_matches_total)}
+							<li class="flex items-center gap-2 text-sm {q.position_in_group > 1 ? '-mx-1 rounded bg-amber-50/70 px-1' : ''}">
 								<span class="w-4 shrink-0 text-right font-mono text-[11px] text-slate-400">{i + 1}</span>
 								<span class="w-6 shrink-0 rounded bg-white/70 text-center font-mono text-[10px] text-slate-500">{q.group_label.replace('Grup ', '')}</span>
 								<span class="flex min-w-0 flex-1 items-center gap-1">
 									{@render player(q.player_name, 'truncate ' + (sure ? 'font-medium' : ''))}
-									{#if sure}<span class="shrink-0 text-emerald-600" title="Classificació assegurada (grup acabat)">✓</span>{/if}
+									{#if q.position_in_group > 1}<span class="shrink-0 rounded bg-amber-100 px-1 text-[9px] font-semibold uppercase text-amber-700" title="Millor 2n: classificat per omplir la següent ronda">2n</span>{/if}{#if sure}<span class="shrink-0 text-emerald-600" title={q.position_in_group > 1 ? 'Classificat (millor 2n, col·locat per la federació)' : 'Classificació assegurada (grup acabat)'}>✓</span>{/if}
 								</span>
 								<!-- Estadístiques completes: només PC/tablet -->
 								<span class="hidden w-8 shrink-0 text-right font-mono text-[11px] text-slate-500 md:inline">{q.pj ?? 0}</span>
@@ -220,7 +220,7 @@
 							</li>
 						{/each}
 					</ol>
-					<p class="mt-1.5 text-[10px] text-slate-400">Només grups amb partides jugades. Ordre: punts → mitjana. ✓ = classificació assegurada (grup acabat).</p>
+					<p class="mt-1.5 text-[10px] text-slate-400">Tots els 1rs de grup + els millors 2ns que calguin per omplir la següent ronda. ✓ = plaça assegurada.</p>
 				</div>
 			{/if}
 			<div class="grid gap-2.5 sm:grid-cols-2">
