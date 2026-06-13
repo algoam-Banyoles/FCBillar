@@ -418,6 +418,22 @@ class DataSource:
                 """,
                 [pid, pid, pid, pid, pid, pid, pid, *mod_param],
             ).fetchone()
+            # Millor mitjana en una sola partida (i quants cops s'ha assolit).
+            avg_rows = c.execute(
+                f"""
+                SELECT (CASE WHEN g.player1_id = ? THEN g.caramboles1 ELSE g.caramboles2 END) AS car,
+                       g.entrades AS ent
+                FROM games g
+                WHERE (g.player1_id = ? OR g.player2_id = ?) {mod_filter}
+                  AND g.entrades > 0
+                """,
+                [pid, pid, pid, *mod_param],
+            ).fetchall()
+            avgs = [r["car"] / r["ent"] for r in avg_rows if r["ent"] and r["car"] is not None]
+            millor_mitjana = max(avgs) if avgs else None
+            millor_mitjana_count = (
+                sum(1 for a in avgs if abs(a - millor_mitjana) < 1e-9) if avgs else 0
+            )
             return {
                 "fcb_id": fcb_id, "nom": nom,
                 "total": row["total"] or 0,
@@ -428,6 +444,8 @@ class DataSource:
                 "car_en_contra": row["car_en_contra"] or 0,
                 "entrades_total": row["entrades_total"] or 0,
                 "serie_max": row["serie_max"],
+                "millor_mitjana": millor_mitjana,
+                "millor_mitjana_count": millor_mitjana_count,
             }
 
     def player_ranking_history(
@@ -461,8 +479,9 @@ class DataSource:
         self, fcb_id: str, modalitat_codi: int = 1
     ) -> dict:
         """Victòries/derrotes per nivell de l'oponent (mitjana de rànquing al moment
-        de la partida). De moment només Tres bandes. Vegeu `fcbillar.analytics`."""
-        from fcbillar.analytics import rating_breakdown, rating_breakdown_rows
+        de la partida), amb branques adaptatives al perfil del jugador i indicadors
+        (índex ponderat + creuament 50%). Tres bandes. Vegeu `fcbillar.analytics`."""
+        from fcbillar.analytics import rating_breakdown
 
         with self._conn() as c:
             pid_row = c.execute(
@@ -471,16 +490,24 @@ class DataSource:
             if pid_row is None:
                 return {}
             pid, nom = pid_row["id"], pid_row["nom"]
-            data = rating_breakdown(c, modalitat_codi, [pid])
-            buckets = rating_breakdown_rows(data.get(pid))
-            classified = sum(b["wins"] + b["losses"] + b["draws"] for b in buckets)
-            return {
-                "fcb_id": fcb_id,
-                "nom": nom,
-                "modalitat_codi": modalitat_codi,
-                "buckets": buckets,
-                "total_classified": classified,
-            }
+            data = rating_breakdown(c, modalitat_codi, [pid]).get(pid)
+        base = {
+            "fcb_id": fcb_id,
+            "nom": nom,
+            "modalitat_codi": modalitat_codi,
+            "buckets": [],
+            "weighted_index": None,
+            "crossover": None,
+            "total_classified": 0,
+        }
+        if data:
+            base.update(
+                buckets=data["buckets"],
+                weighted_index=data["weighted_index"],
+                crossover=data["crossover"],
+                total_classified=data["total"],
+            )
+        return base
 
     def player_opens_femeni(self, fcb_id: str) -> dict:
         """Posició de la jugadora al Rànquing del Circuit Català Tres Bandes Femení.

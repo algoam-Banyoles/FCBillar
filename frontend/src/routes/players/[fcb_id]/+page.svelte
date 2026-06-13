@@ -40,6 +40,14 @@
 		return meLocal ? (g.serie1 ?? null) : (g.serie2 ?? null);
 	}
 
+	// Mitjana del jugador d'aquesta fitxa en una partida (caramboles/entrades).
+	function playerGameAvg(g: GameRow): number | null {
+		if (!g.entrades) return null;
+		const meLocal = g.local === summary?.nom;
+		const myCar = meLocal ? g.cara1 : g.cara2;
+		return myCar == null ? null : myCar / g.entrades;
+	}
+
 	// ── Types ────────────────────────────────────────────────────────────────
 	interface BestWorst {
 		best: GameRow[];
@@ -89,17 +97,20 @@
 	}
 	let opensFemeni: OpensFemeniStanding | null = null;
 
-	// Rendiment per nivell d'oponent (aranya). Només Tres bandes (codi 1).
+	// Rendiment per nivell d'oponent (aranya). Branques adaptatives. Tres bandes.
 	interface RatingBucket {
-		bucket: string;
-		bucket_order: number;
+		order: number;
 		label: string;
+		rating_min: number;
+		rating_max: number;
 		wins: number;
 		losses: number;
 		draws: number;
 	}
 	const TRES_BANDES = 1;
 	let ratingBuckets: RatingBucket[] = [];
+	let ratingIndex: number | null = null;
+	let ratingCrossover: number | null = null;
 
 	let loading = true;
 	let notFound = false;
@@ -226,12 +237,18 @@
 			return;
 		}
 		try {
-			const r = await api<{ buckets: RatingBucket[] }>(
-				`/api/players/${fcbId}/rating-breakdown?modalitat=${TRES_BANDES}`
-			);
+			const r = await api<{
+				buckets: RatingBucket[];
+				weighted_index: number | null;
+				crossover: number | null;
+			}>(`/api/players/${fcbId}/rating-breakdown?modalitat=${TRES_BANDES}`);
 			ratingBuckets = r?.buckets ?? [];
+			ratingIndex = r?.weighted_index ?? null;
+			ratingCrossover = r?.crossover ?? null;
 		} catch {
 			ratingBuckets = [];
+			ratingIndex = null;
+			ratingCrossover = null;
 		}
 	}
 
@@ -335,7 +352,7 @@
 	</div>
 
 	<!-- ── KPI StatCards ──────────────────────────────────────────────────── -->
-	<div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+	<div class="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
 		<StatCard
 			label="Partides"
 			value={summary.total}
@@ -363,6 +380,22 @@
 						)
 				: null}
 		/>
+		<StatCard
+			label={summary.millor_mitjana_count > 1
+				? `Millor mitjana (×${summary.millor_mitjana_count})`
+				: 'Millor mitjana'}
+			value={summary.millor_mitjana != null ? fmtMitjana(summary.millor_mitjana) : '—'}
+			onClick={summary.millor_mitjana != null
+				? () =>
+						openGamesModal(
+							`Partides amb la millor mitjana (${fmtMitjana(summary?.millor_mitjana ?? 0)})`,
+							(g) => {
+								const a = playerGameAvg(g);
+								return a != null && Math.abs(a - (summary?.millor_mitjana ?? 0)) < 1e-9;
+							}
+						)
+				: null}
+		/>
 	</div>
 
 	<!-- ── Rendiment per nivell d'oponent (aranya, Tres bandes) ───────────── -->
@@ -372,9 +405,32 @@
 				<Card>
 					<div class="p-4">
 						<RadarChart buckets={ratingBuckets} />
-						<p class="text-xs text-slate-500 mt-2 text-center">
-							Victòries i derrotes segons la mitjana de rànquing de l'oponent en el moment de
-							disputar la partida (Tres bandes).
+						{#if ratingIndex != null || ratingCrossover != null}
+							<div class="flex flex-wrap justify-center gap-x-8 gap-y-2 mt-3">
+								{#if ratingIndex != null}
+									<div class="text-center">
+										<div class="text-xl font-bold text-slate-800">{ratingIndex}</div>
+										<div class="text-[11px] uppercase tracking-wide text-slate-400">
+											índex de rendiment
+										</div>
+									</div>
+								{/if}
+								{#if ratingCrossover != null}
+									<div class="text-center">
+										<div class="text-xl font-bold text-slate-800">
+											{ratingCrossover.toFixed(2).replace('.', ',')}
+										</div>
+										<div class="text-[11px] uppercase tracking-wide text-slate-400">
+											competitiu fins a ~
+										</div>
+									</div>
+								{/if}
+							</div>
+						{/if}
+						<p class="text-xs text-slate-500 mt-3 text-center">
+							Branques adaptades al perfil: 6 franges d'igual amplada pel rang de rivals (per
+							mitjana de rànquing al moment de la partida, Tres bandes). L'índex pondera les
+							victòries pel nivell del rival.
 						</p>
 					</div>
 				</Card>

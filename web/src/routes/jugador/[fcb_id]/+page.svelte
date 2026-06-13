@@ -337,6 +337,7 @@
 	const modGames = $derived(games.filter((g) => selMod == null || g.modalitat_codi === selMod));
 	function computeKpi(gs: GameRow[]) {
 		let car = 0, ent = 0, w = 0, l = 0, t = 0, sm = 0, n = 0;
+		let best: number | null = null, bestN = 0;
 		for (const g of gs) {
 			const p = persp(g);
 			n++;
@@ -346,8 +347,21 @@
 			if (p.tie) t++;
 			else if (p.won) w++;
 			else l++;
+			if (p.ent > 0) {
+				const a = p.myCar / p.ent;
+				if (best == null || a > best + 1e-9) {
+					best = a;
+					bestN = 1;
+				} else if (Math.abs(a - best) < 1e-9) {
+					bestN++;
+				}
+			}
 		}
-		return { n, mitjana: ent ? car / ent : 0, sm, w, l, t, pct: n ? Math.round((100 * w) / n) : 0 };
+		return {
+			n, mitjana: ent ? car / ent : 0, sm, w, l, t,
+			pct: n ? Math.round((100 * w) / n) : 0,
+			best, bestN
+		};
 	}
 	const kpi = $derived(computeKpi(modGames));
 	// Temporada actual: comença l'1 d'agost.
@@ -413,12 +427,18 @@
 		selIdx = null;
 	}
 
-	// Rendiment per nivell d'oponent (aranya). Precomputat; només Tres bandes (1).
+	// Rendiment per nivell d'oponent (aranya, branques adaptatives). Tres bandes.
 	let ratingBuckets = $state<{ label: string; wins: number; losses: number; draws: number }[]>([]);
+	let ratingIndex = $state<number | null>(null);
+	let ratingCrossover = $state<number | null>(null);
 	$effect(() => {
 		const id = fcbId;
 		if (id && selMod === 1) loadRatingBuckets(id);
-		else ratingBuckets = [];
+		else {
+			ratingBuckets = [];
+			ratingIndex = null;
+			ratingCrossover = null;
+		}
 	});
 	async function loadRatingBuckets(id: string) {
 		const { data } = await supabase
@@ -433,6 +453,14 @@
 			losses: r.losses ?? 0,
 			draws: r.draws ?? 0
 		}));
+		const { data: idx } = await supabase
+			.from('player_rating_index')
+			.select('weighted_index, crossover')
+			.eq('player_fcb_id', id)
+			.eq('modalitat_codi', 1)
+			.maybeSingle();
+		ratingIndex = idx?.weighted_index ?? null;
+		ratingCrossover = idx?.crossover ?? null;
 	}
 	// Marques de l'eix X (divisions) amb el número de rànquing de referència.
 	const xTicks = $derived.by(() => {
@@ -772,8 +800,8 @@
 			<!-- KPIs -->
 			<div class="mb-4 rounded-xl bg-white p-3 ring-1 ring-slate-200">
 				<div class="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Històric</div>
-				<div class="grid grid-cols-4 gap-2">
-					{#each [['Partides', kpi.n, ''], ['Mitjana', kpi.mitjana.toFixed(3), ''], ['Sèrie màx', kpi.sm, 'sm'], ['% vict.', kpi.pct + '%', '']] as [label, val, key]}
+				<div class="grid grid-cols-5 gap-2">
+					{#each [['Partides', kpi.n, ''], ['Mitjana', kpi.mitjana.toFixed(3), ''], ['Sèrie màx', kpi.sm, 'sm'], ['% vict.', kpi.pct + '%', ''], [kpi.bestN > 1 ? `Millor mitj. ×${kpi.bestN}` : 'Millor mitj.', kpi.best != null ? kpi.best.toFixed(3) : '—', '']] as [label, val, key]}
 						<button onclick={() => { if (key === 'sm') serieFilter = !serieFilter; }} class="rounded-lg py-0.5 text-center {key === 'sm' && serieFilter ? 'ring-2 ring-blue-500' : ''}">
 							<div class="font-mono text-base font-bold tabular-nums">{val}</div>
 							<div class="text-[10px] uppercase tracking-wide text-slate-400">{label}</div>
@@ -950,9 +978,27 @@
 					Rendiment per nivell d'oponent
 				</div>
 				<RadarChart buckets={ratingBuckets} />
+				{#if ratingIndex != null || ratingCrossover != null}
+					<div class="mt-2 flex justify-center gap-8">
+						{#if ratingIndex != null}
+							<div class="text-center">
+								<div class="font-mono text-base font-bold tabular-nums">{ratingIndex}</div>
+								<div class="text-[10px] uppercase tracking-wide text-slate-400">índex rendiment</div>
+							</div>
+						{/if}
+						{#if ratingCrossover != null}
+							<div class="text-center">
+								<div class="font-mono text-base font-bold tabular-nums">
+									{ratingCrossover.toFixed(2).replace('.', ',')}
+								</div>
+								<div class="text-[10px] uppercase tracking-wide text-slate-400">competitiu fins a ~</div>
+							</div>
+						{/if}
+					</div>
+				{/if}
 				<p class="mt-2 text-center text-[10px] text-slate-400">
-					Victòries i derrotes segons la mitjana de rànquing de l'oponent en el moment de la
-					partida.
+					6 branques adaptades al rang de rivals del jugador (mitjana de rànquing al moment de la
+					partida). L'índex pondera les victòries pel nivell del rival.
 				</p>
 			</div>
 		{/if}

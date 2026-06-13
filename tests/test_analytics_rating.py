@@ -1,90 +1,97 @@
-"""Tests del rendiment per nivell d'oponent (fcbillar.analytics)."""
+"""Tests del rendiment per nivell d'oponent (fcbillar.analytics).
+
+Branques adaptatives (N franges d'igual amplada sobre el rang de rivals) +
+indicadors (índex ponderat, creuament 50%)."""
 
 from __future__ import annotations
 
 import sqlite3
 
 from fcbillar.analytics import (
-    RATING_BUCKETS_TB,
+    N_BRANCHES,
+    _adaptive_buckets,
+    _crossover,
+    _weighted_index,
     rating_breakdown,
-    rating_breakdown_rows,
 )
 from fcbillar.db.migrations import ensure_schema
 
 
-def _setup(tmp_path) -> tuple[sqlite3.Connection, int]:
-    """BD mínima: jugador P contra 3 oponents amb nivells coneguts.
+def test_adaptive_buckets_equal_width_over_range() -> None:
+    games = [(1, 0.40), (1, 0.50), (-1, 0.95), (-1, 1.00)]
+    buckets = _adaptive_buckets(games)
+    assert len(buckets) == N_BRANCHES  # 6 franges d'igual amplada (0,10)
+    assert buckets[0]["label"] == "0,40-0,50"
+    assert buckets[-1]["label"] == "0,90-1,00"
+    assert buckets[0]["wins"] == 1  # 0,40
+    assert buckets[1]["wins"] == 1  # 0,50
+    assert buckets[-1]["losses"] == 2  # 0,95 i 1,00 (límit superior → última franja)
 
-    - A: mitjana de ranquing 0,9 (via link), grup 0,800-1,000, P guanya
-    - B: mitjana de ranquing 0,5 (via link), grup 0,400-0,600, P perd
-    - C: sense link (fallback 18/30 = 0,6), grup 0,600-0,800, P guanya
-    """
+
+def test_adaptive_buckets_single_rating_collapses() -> None:
+    buckets = _adaptive_buckets([(1, 0.5), (-1, 0.5)])
+    assert len(buckets) == 1
+    assert buckets[0]["wins"] == 1 and buckets[0]["losses"] == 1
+
+
+def test_weighted_index_rewards_beating_strong() -> None:
+    # Guanyar un 1,0 i perdre amb un 0,5 → 100·1,0/1,5 = 66,7.
+    assert _weighted_index([(1, 1.0), (-1, 0.5)]) == 66.7
+    assert _weighted_index([(0, 0.5)]) is None  # sense decisives
+
+
+def test_crossover_interpolates_50pct() -> None:
+    games = [(1, 0.4), (1, 0.4), (1, 0.7), (-1, 0.7), (-1, 1.0), (-1, 1.0)]
+    # Franges decisives: 0,45→100%, 0,75→50%, 0,95→0% ; creua el 50% a 0,75.
+    assert _crossover(_adaptive_buckets(games)) == 0.75
+
+
+def _setup(tmp_path) -> sqlite3.Connection:
+    """P juga contra 4 rivals de nivell conegut (via link): guanya els fluixos."""
     conn = ensure_schema(tmp_path / "t.db")
     conn.row_factory = sqlite3.Row
     tb = conn.execute("SELECT id FROM modalitats WHERE codi_fcb = 1").fetchone()["id"]
-
-    def player(pid: int, nom: str) -> None:
+    for pid, nom in [(1, "P"), (2, "A"), (3, "B"), (4, "C"), (5, "D")]:
         conn.execute("INSERT INTO players (id, fcb_id, nom) VALUES (?,?,?)", (pid, f"f{pid}", nom))
-
-    for pid, nom in [(1, "P"), (2, "A"), (3, "B"), (4, "C")]:
-        player(pid, nom)
-
     conn.execute(
         "INSERT INTO rankings (id, num_seq, modalitat_id, url, format_url) VALUES (1,1,?,?,?)",
         (tb, "u", "data"),
     )
-    for player_id, mitjana in [(2, 0.9), (3, 0.5)]:
+    for player_id, mitjana in [(2, 0.4), (3, 0.6), (4, 0.9), (5, 1.2)]:
         conn.execute(
             "INSERT INTO ranking_entries (ranking_id, player_id, mitjana_general) VALUES (1,?,?)",
             (player_id, mitjana),
         )
 
-    def game(gid: str, p2: int, c1: int, c2: int, winner: int) -> None:
+    def game(gid: str, p2: int, winner: int) -> None:
         conn.execute(
-            """INSERT INTO games (id, data_partida, modalitat_id, player1_id, player2_id,
-                                  caramboles1, caramboles2, entrades, guanyador_id)
-               VALUES (?,?,?,?,?,?,?,?,?)""",
-            (gid, "2025-01-01", tb, 1, p2, c1, c2, 30, winner),
+            "INSERT INTO games (id, data_partida, modalitat_id, player1_id, player2_id, "
+            "caramboles1, caramboles2, entrades, guanyador_id) VALUES (?,?,?,?,?,?,?,?,?)",
+            (gid, "2025-01-01", tb, 1, p2, 40, 30, 30, winner),
         )
 
-    game("gA", 2, 40, 35, winner=1)  # P guanya A (rànquing 0,9)
-    game("gB", 3, 30, 40, winner=3)  # P perd amb B (rànquing 0,5)
-    game("gC", 4, 40, 18, winner=1)  # P guanya C (sense link → 18/30 = 0,6)
-
-    # Links només per A i B (C cau al fallback de mitjana de partida).
-    for gid, opp in [("gA", 2), ("gB", 3)]:
+    game("gA", 2, 1)  # P guanya A (0,4)
+    game("gB", 3, 1)  # P guanya B (0,6)
+    game("gC", 4, 4)  # P perd amb C (0,9)
+    game("gD", 5, 5)  # P perd amb D (1,2)
+    for gid, opp in [("gA", 2), ("gB", 3), ("gC", 4), ("gD", 5)]:
         conn.execute(
             "INSERT INTO ranking_game_links (ranking_id, game_id, player_id_origen) VALUES (1,?,?)",
             (gid, opp),
         )
-    return conn, 1
+    return conn
 
 
-def test_rating_breakdown_buckets_by_opponent_ranking(tmp_path) -> None:
-    conn, pid = _setup(tmp_path)
-    res = rating_breakdown(conn, 1, [pid])[pid]
-    assert res["b0800"] == {"wins": 1, "losses": 0, "draws": 0}  # vs A (0,9)
-    assert res["b0400"] == {"wins": 0, "losses": 1, "draws": 0}  # vs B (0,5)
-    assert res["b0600"] == {"wins": 1, "losses": 0, "draws": 0}  # vs C (fallback 0,6)
-
-
-def test_rating_breakdown_totals_reconcile(tmp_path) -> None:
-    conn, pid = _setup(tmp_path)
-    res = rating_breakdown(conn, 1, [pid])[pid]
-    total = sum(b["wins"] + b["losses"] + b["draws"] for b in res.values())
-    assert total == 3  # totes les partides de P queden classificades
+def test_rating_breakdown_end_to_end(tmp_path) -> None:
+    prof = rating_breakdown(_setup(tmp_path), 1, [1])[1]
+    assert prof["total"] == 4
+    assert len(prof["buckets"]) == N_BRANCHES
+    assert sum(b["wins"] for b in prof["buckets"]) == 2
+    assert sum(b["losses"] for b in prof["buckets"]) == 2
+    # Índex ponderat = 100·(0,4+0,6)/(0,4+0,6+0,9+1,2) = 32,3.
+    assert prof["weighted_index"] == 32.3
+    assert prof["crossover"] is not None
 
 
 def test_rating_breakdown_non_tres_bandes_is_empty(tmp_path) -> None:
-    conn, pid = _setup(tmp_path)
-    assert rating_breakdown(conn, 2, [pid]) == {}
-
-
-def test_rating_breakdown_rows_fills_five_ordered_buckets(tmp_path) -> None:
-    conn, pid = _setup(tmp_path)
-    rows = rating_breakdown_rows(rating_breakdown(conn, 1, [pid]).get(pid))
-    assert [r["bucket"] for r in rows] == [k for k, *_ in RATING_BUCKETS_TB]
-    assert [r["bucket_order"] for r in rows] == [0, 1, 2, 3, 4]
-    # Els grups buits surten a zero (no es perden eixos del radar).
-    empty = next(r for r in rows if r["bucket"] == "ge1000")
-    assert empty["wins"] == 0 and empty["losses"] == 0
+    assert rating_breakdown(_setup(tmp_path), 2, [1]) == {}

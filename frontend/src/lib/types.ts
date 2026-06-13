@@ -99,6 +99,8 @@ export interface PlayerSummary {
 	car_en_contra: number;
 	entrades_total: number;
 	serie_max: number | null;
+	millor_mitjana: number | null;
+	millor_mitjana_count: number;
 }
 
 export interface OrderEvolutionRow {
