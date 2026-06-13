@@ -27,9 +27,15 @@
 	// Marcadors en viu (OCR) per grup. Normalitzem l'etiqueta (de vegades "T",
 	// de vegades "Grup T") perquè casi amb el grup de la classificació.
 	const normGroup = (s: string | null) => (s ?? '').replace(/grup\s*/i, '').toUpperCase().trim();
+	// Només marcadors FRESCS: si fa més de 8 min que no es refresquen, la partida
+	// pot haver acabat o estar en pausa → no mostrem un valor potser obsolet.
+	const FRESH_MS = 8 * 60 * 1000;
 	function liveForGroup(label: string): OpenLiveScore[] {
 		const k = normGroup(label);
-		return scores.filter((s) => normGroup(s.group_label) === k);
+		const cutoff = Date.now() - FRESH_MS;
+		return scores.filter(
+			(s) => normGroup(s.group_label) === k && new Date(s.captured_at).getTime() > cutoff
+		);
 	}
 
 	// Recorda la fase seleccionada per divisió (per restaurar-la en tornar enrere).
