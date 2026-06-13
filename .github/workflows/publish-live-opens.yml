@@ -10,14 +10,15 @@ name: Publish live opens
 #   - SUPABASE_URL
 #   - SUPABASE_SERVICE_ROLE_KEY
 #
-# CADÈNCIA: cada 15 min dins una finestra diürna (UTC). Catalunya va a UTC+2 a
-# l'estiu, així que 06–22 UTC ≈ 08–24 local. Ajusta el cron (o afegeix-hi un
-# filtre de dia de la setmana, p.ex. ',0,6' per a només caps de setmana) segons
-# quan es disputin els opens, per no gastar minuts d'Actions de franc.
+# CADÈNCIA: divendres, dissabte i diumenge, de 9:00 a 22:00 hora local, cada 30
+# min. ATENCIÓ: el cron de GitHub Actions va en UTC i NO aplica horari d'estiu.
+#   - Estiu (CEST = UTC+2, ~final març–final octubre): 9–22 local = 07–20 UTC.
+#   - Hivern (CET = UTC+1): caldria sumar 1 h → '*/30 8-21 * * 5,6,0'.
+# Dies de la setmana: 5=dv, 6=ds, 0=dg.
 
 on:
   schedule:
-    - cron: '*/15 6-22 * * *'
+    - cron: '*/30 7-20 * * 5,6,0'
   workflow_dispatch: {}
 
 # No solapis execucions: si una triga, la següent espera (no s'encavalquen).
