@@ -126,6 +126,21 @@
 	function koPairs(phase: OpenLivePhase): OpenLiveMatch[] {
 		return phase.ko_matches.length ? phase.ko_matches : phase.provisional_matches;
 	}
+
+	// Primer cognom (vista de partides en directe). El nom ve "COGNOM1 [COGNOM2],
+	// NOM"; el 1r cognom pot ser compost amb partícules (de, la, del…) → "DE LA HOZ".
+	const _PART = new Set(['DE', 'DEL', 'DELS', 'D', 'LA', 'LES', 'EL', 'ELS', 'LO', 'LOS', 'I', 'Y', 'VON', 'VAN', 'DER', 'DA', 'DO', 'DOS', 'DAS', 'SAN', 'SANTA', 'MC', 'MAC']);
+	function firstSurname(name: string | null | undefined): string {
+		if (!name || name === '—') return name ?? '—';
+		const surnames = (name.includes(',') ? name.split(',')[0] : name).trim();
+		const toks = surnames.split(/\s+/).filter(Boolean);
+		const out: string[] = [];
+		for (const t of toks) {
+			out.push(t);
+			if (!_PART.has(t.toUpperCase().replace(/['’.]/g, ''))) break;
+		}
+		return out.join(' ') || surnames;
+	}
 </script>
 
 <!-- Nom de jugador: enllaç a la fitxa si el podem resoldre, si no text pla. -->
@@ -135,6 +150,16 @@
 		<a {href} class="{cls} hover:underline active:underline">{name}</a>
 	{:else}
 		<span class={cls}>{name}</span>
+	{/if}
+{/snippet}
+
+<!-- Igual que player() però mostra NOMÉS el 1r cognom (partides en directe). -->
+{#snippet playerShort(name: string, cls: string)}
+	{@const href = playerHref(name)}
+	{#if href}
+		<a {href} class="{cls} hover:underline active:underline">{firstSurname(name)}</a>
+	{:else}
+		<span class={cls}>{firstSurname(name)}</span>
 	{/if}
 {/snippet}
 
@@ -226,7 +251,7 @@
 					<p class="mt-1.5 text-[10px] text-slate-400 dark:text-slate-500">Tots els 1rs de grup + els millors 2ns que calguin per omplir la següent ronda. ✓ = plaça assegurada.</p>
 				</div>
 			{/if}
-			{@const liveNow = phase.groups.flatMap((g) => liveForGroup(g.label).map((sc) => ({ sc, grp: g.label })))}
+			{@const liveNow = scores.filter((s) => Date.now() - new Date(s.captured_at).getTime() < FRESH_MS).map((sc) => ({ sc, grp: sc.group_label || '—' }))}
 			{#if liveNow.length}
 				<div class="mb-3 rounded-xl bg-red-50 p-3 ring-1 ring-red-200 dark:bg-red-950/40 dark:ring-red-900/50">
 					<div class="mb-1.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-red-700 dark:text-red-400">
@@ -240,9 +265,9 @@
 							{@const warm = sc.car_a == null && sc.car_b == null}
 							<li class="flex items-center gap-2 text-xs">
 								<span class="w-6 shrink-0 rounded bg-white/70 text-center font-mono text-[10px] text-slate-500 dark:bg-slate-800 dark:text-slate-400">{grp.replace('Grup ', '')}</span>
-								{@render player(sc.player_a ?? '—', 'min-w-0 flex-1 truncate font-bold ' + (aW ? 'text-emerald-600 dark:text-emerald-400' : bW ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-slate-100'))}
+								{@render playerShort(sc.player_a ?? '—', 'min-w-0 flex-1 truncate font-bold ' + (aW ? 'text-emerald-600 dark:text-emerald-400' : bW ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-slate-100'))}
 								{#if warm}<span class="shrink-0 rounded bg-amber-100 px-1.5 text-[9px] font-semibold uppercase text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">escalfament</span>{:else}<span class="shrink-0 font-mono font-bold text-slate-700 dark:text-slate-200">{sc.car_a}–{sc.car_b}</span>{/if}
-								{@render player(sc.player_b ?? '—', 'min-w-0 flex-1 truncate text-right font-bold ' + (bW ? 'text-emerald-600 dark:text-emerald-400' : aW ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-slate-100'))}
+								{@render playerShort(sc.player_b ?? '—', 'min-w-0 flex-1 truncate text-right font-bold ' + (bW ? 'text-emerald-600 dark:text-emerald-400' : aW ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-slate-100'))}
 								{#if sc.entrades}<span class="shrink-0 font-mono text-[10px] text-slate-400 dark:text-slate-500">{sc.entrades}e</span>{/if}
 								<a href="https://www.youtube.com/watch?v={sc.video_id}" target="_blank" rel="noopener" title="Veure a YouTube" class="shrink-0 text-red-600 hover:opacity-80 dark:text-red-400"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="currentColor" aria-hidden="true"><path d="M23.5 6.2a3 3 0 0 0-2.11-2.12C21.5 3.55 12 3.55 12 3.55s-9.5 0-11.39.53A3 3 0 0 0 .5 6.2 31.4 31.4 0 0 0 0 12a31.4 31.4 0 0 0 .5 5.8 3 3 0 0 0 2.11 2.12C4.5 20.45 12 20.45 12 20.45s9.5 0 11.39-.53A3 3 0 0 0 23.5 17.8 31.4 31.4 0 0 0 24 12a31.4 31.4 0 0 0-.5-5.8zM9.55 15.57V8.43L15.82 12z"/></svg></a>
 							</li>
@@ -290,9 +315,9 @@
 											{@const bW = (sc.car_b ?? 0) > (sc.car_a ?? 0)}
 											<li>
 												<div class="flex items-center justify-between gap-2 text-xs">
-													{@render player(sc.player_a ?? '—', 'min-w-0 flex-1 truncate font-bold ' + (aW ? 'text-emerald-600 dark:text-emerald-400' : bW ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-slate-100'))}
+													{@render playerShort(sc.player_a ?? '—', 'min-w-0 flex-1 truncate font-bold ' + (aW ? 'text-emerald-600 dark:text-emerald-400' : bW ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-slate-100'))}
 													<span class="shrink-0 font-mono font-bold text-slate-700 dark:text-slate-200">{sc.car_a}–{sc.car_b}</span>
-													{@render player(sc.player_b ?? '—', 'min-w-0 flex-1 truncate text-right font-bold ' + (bW ? 'text-emerald-600 dark:text-emerald-400' : aW ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-slate-100'))}
+													{@render playerShort(sc.player_b ?? '—', 'min-w-0 flex-1 truncate text-right font-bold ' + (bW ? 'text-emerald-600 dark:text-emerald-400' : aW ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-slate-100'))}
 												</div>
 												<div class="mt-0.5 flex items-center justify-center gap-2 text-[10px] text-slate-400 dark:text-slate-500">
 													{#if sc.entrades}<span>{sc.entrades} ent.</span>{/if}
